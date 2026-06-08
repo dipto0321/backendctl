@@ -1,0 +1,43 @@
+name: Release
+
+# Publishes to PyPI via Trusted Publishing (OIDC) when a v* tag is pushed.
+# No API tokens are stored anywhere — PyPI verifies the workflow identity.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    name: Build & publish to PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/backendctl/
+    permissions:
+      id-token: write   # required for Trusted Publishing
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify tag matches package version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(grep -m1 '^version' pyproject.toml | sed -E 's/.*"(.*)".*/\1/')
+          echo "tag=$TAG  pyproject=$PKG"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::Tag v$TAG does not match pyproject version $PKG" >&2
+            exit 1
+          fi
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Smoke-test the built wheel
+        run: uv run --isolated --no-project --with "$(ls dist/*.whl)" backendctl --version
+
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing always
