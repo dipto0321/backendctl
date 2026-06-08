@@ -21,9 +21,13 @@ Requires **Python 3.11+** and [uv](https://docs.astral.sh/uv/).
 ```bash
 git clone https://github.com/dipto0321/backendctl
 cd backendctl
-uv sync                 # install runtime + dev dependencies
+uv sync                       # install runtime + dev dependencies
+uv run pre-commit install     # auto-run lint/format checks on each commit
 uv run backendctl --help
 ```
+
+`pre-commit` then runs ruff and basic hygiene checks before every commit. Run it
+against the whole repo any time with `uv run pre-commit run --all-files`.
 
 ## Workflow (GitHub Flow)
 
