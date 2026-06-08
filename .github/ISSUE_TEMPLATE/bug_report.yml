@@ -1,0 +1,66 @@
+name: Bug report
+description: Report something that is broken or behaving incorrectly.
+title: "bug: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! Please search existing issues
+        first to avoid duplicates. **Do not report security vulnerabilities here**
+        — see our [security policy](../security/policy).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, including the full error output if any.
+      placeholder: When I run `backendctl new …`, it fails with …
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands and answers you used.
+      placeholder: |
+        1. Run `backendctl new myapp --framework fastapi --db postgres`
+        2. Choose JWT auth
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: backendctl version
+      description: Output of `backendctl --version`.
+      placeholder: backendctl v0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: framework
+    attributes:
+      label: Affected framework (if applicable)
+      options:
+        - "Not framework-specific / the CLI itself"
+        - FastAPI
+        - Flask
+        - Django REST Framework
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version (`python --version`), and package manager (uv/pip).
+      placeholder: |
+        - OS: macOS 15
+        - Python: 3.12.4
+        - Package manager: uv 0.5.0
+    validations:
+      required: true

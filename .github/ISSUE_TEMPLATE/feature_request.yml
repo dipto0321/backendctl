@@ -1,0 +1,52 @@
+name: Feature request
+description: Suggest a new capability or improvement.
+title: "feat: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea! Please search existing issues and discussions first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What are you trying to do, and what's missing or painful today?
+      placeholder: As a user scaffolding a project, I want … because …
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should backendctl do? Include CLI flags or wizard steps if relevant.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - New framework
+        - New database / integration
+        - Auth
+        - AI assistant config
+        - CLI / wizard UX
+        - Generated project structure
+        - Tooling / CI
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I'm willing to open a pull request for this.
+          required: false
