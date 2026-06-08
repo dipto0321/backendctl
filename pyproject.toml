@@ -1,0 +1,64 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "backendctl"
+version = "0.1.0"
+description = "A CLI tool for scaffolding production-ready Python backend projects"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Dipto Karmakar", email = "diptokmk47@gmail.com" }]
+keywords = ["cli", "scaffold", "fastapi", "flask", "django", "backend", "generator"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+]
+
+dependencies = [
+    "typer>=0.12.0",
+    "rich>=13.0.0",
+    "questionary>=2.0.0",
+]
+
+[project.scripts]
+backendctl = "backendctl.main:app"
+
+[project.urls]
+Homepage = "https://github.com/dipto0321/backendctl"
+Repository = "https://github.com/dipto0321/backendctl"
+Issues = "https://github.com/dipto0321/backendctl/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/backendctl"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+# Template modules return generated source code as f-strings, so long lines and
+# placeholder-free f-strings are intentional, not style violations.
+"src/backendctl/templates/*" = ["E501", "F541"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.4.0",
+    "mypy>=1.0.0",
+]
