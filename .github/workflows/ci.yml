@@ -31,3 +31,20 @@ jobs:
 
       - name: Test
         run: uv run pytest -q
+
+  build:
+    name: Build & smoke-test wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Smoke-test the built wheel in an isolated env
+        run: uv run --isolated --no-project --with "$(ls dist/*.whl)" backendctl --version
