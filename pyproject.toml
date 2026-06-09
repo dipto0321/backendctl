@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "backendctl"
-version = "0.1.0"
-description = "A CLI tool for scaffolding production-ready Python backend projects"
+version = "0.1.1"
+description = "A CLI tool for scaffolding Python backend projects"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
