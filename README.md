@@ -1,11 +1,12 @@
 # backendctl
 
-> Scaffold production-ready Python backends in seconds.
+> Stop rewriting the same boilerplate. Start with a solid foundation.
 
 `backendctl` is an interactive CLI that generates a batteries-included backend
 project — auth, database, migrations, rate limiting, tests, linting, and optional
 AI-assistant config — for the framework of your choice. Pick **FastAPI**,
-**Flask**, or **Django REST Framework**, answer a few questions, and start coding.
+**Flask**, or **Django REST Framework**, answer a few questions, and start coding
+your actual business logic.
 
 ## Features
 
@@ -13,7 +14,7 @@ AI-assistant config — for the framework of your choice. Pick **FastAPI**,
 - **JWT auth out of the box** — register / login / refresh, Argon2 password hashing,
   a `User` model, and a `/users/me` endpoint.
 - **Database choice** — PostgreSQL (with SQLite for tests), MongoDB, or both.
-- **Production touches** — rate limiting, CORS, env-based config, layered settings.
+- **Sane defaults** — rate limiting, CORS, env-based config, layered settings.
 - **Migrations** — Alembic (FastAPI), Flask-Migrate, or Django migrations.
 - **Tests included** — `pytest` suite wired up with fixtures.
 - **Tooling** — `ruff`, `mypy`, `.pre-commit-config.yaml`, `.editorconfig`.
