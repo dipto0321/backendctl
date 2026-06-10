@@ -14,7 +14,7 @@ class FastAPIGenerator(BaseGenerator):
         # Root files
         self._write("pyproject.toml", t.pyproject_toml(c))
         self._write(".env.example", t.env_example(c))
-        self._write(
+        self._write_if_absent(
             ".env",
             t.env_example(c).replace("change-me-to-a-long-random-string", _random_key()),
         )
@@ -30,6 +30,8 @@ class FastAPIGenerator(BaseGenerator):
         self._write(f"src/{s}/core/config.py", t.core_config(c))
         self._write(f"src/{s}/core/database.py", t.core_database(c))
         self._write(f"src/{s}/core/security.py", t.core_security(c))
+        if c.uses_mongo:
+            self._write(f"src/{s}/core/mongo.py", t.core_mongo(c))
 
         # middleware/
         self._write(f"src/{s}/middleware/__init__.py", "")

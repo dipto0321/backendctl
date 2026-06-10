@@ -221,3 +221,9 @@ __marimo__/
 
 .venv
 .DS_Store
+
+# Local review report (not for VCS)
+REVIEW.md
+
+# Claude local settings
+.claude/settings.local.json

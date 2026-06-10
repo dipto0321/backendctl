@@ -6,6 +6,15 @@ from backendctl.core.config import ProjectConfig
 
 # ─── pyproject.toml ──────────────────────────────────────────────────────────
 
+_DEV_DEPS = """\
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.27.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+"""
+
 
 def pyproject_toml(c: ProjectConfig) -> str:
     mongo_dep = '    "motor>=3.4.0",\n' if c.uses_mongo else ""
@@ -34,15 +43,15 @@ dependencies = [
     "python-multipart>=0.0.9",
 {pg_dep}{mongo_dep}{ai_dep}]
 
+# Dev deps are declared twice on purpose: [dependency-groups] for uv,
+# [project.optional-dependencies] so `pip install -e .[dev]` also works.
 [dependency-groups]
 dev = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.24.0",
-    "httpx>=0.27.0",
-    "pytest-cov>=5.0.0",
-    "ruff>=0.4.0",
-    "mypy>=1.10.0",
-]
+{_DEV_DEPS}]
+
+[project.optional-dependencies]
+dev = [
+{_DEV_DEPS}]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/{c.slug}"]
@@ -105,6 +114,9 @@ BACKEND_CORS_ORIGINS=["http://localhost:3000","http://localhost:5173"]
 
 # ── Rate limiting ─────────────────────────────────────────
 RATE_LIMIT_DEFAULT=100/minute
+# In-memory storage is per-process; use Redis when running multiple workers,
+# e.g. RATE_LIMIT_STORAGE_URI=redis://localhost:6379
+RATE_LIMIT_STORAGE_URI=memory://
 """
 
 
@@ -112,6 +124,12 @@ RATE_LIMIT_DEFAULT=100/minute
 
 
 def app_main(c: ProjectConfig) -> str:
+    mongo_import = (
+        f"from {c.slug}.core.mongo import close_mongo, init_mongo\n" if c.uses_mongo else ""
+    )
+    mongo_startup = "    init_mongo()\n" if c.uses_mongo else ""
+    mongo_shutdown = "\n    close_mongo()" if c.uses_mongo else ""
+
     return f"""\
 from contextlib import asynccontextmanager
 
@@ -123,13 +141,16 @@ from slowapi.errors import RateLimitExceeded
 from {c.slug}.api.v1.router import api_router
 from {c.slug}.core.config import settings
 from {c.slug}.core.database import create_db_and_tables
-from {c.slug}.middleware.rate_limit import limiter
+{mongo_import}from {c.slug}.middleware.rate_limit import limiter
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    create_db_and_tables()
-    yield
+    # Schema is owned by Alembic in production (run `alembic upgrade head`).
+    # create_all() is a convenience for local development and tests only.
+    if settings.APP_ENV != "production":
+        create_db_and_tables()
+{mongo_startup}    yield{mongo_shutdown}
 
 
 def create_app() -> FastAPI:
@@ -204,6 +225,7 @@ class Settings(BaseSettings):
 {mongo_fields}
     # Rate limiting
     RATE_LIMIT_DEFAULT: str = "100/minute"
+    RATE_LIMIT_STORAGE_URI: str = "memory://"
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
@@ -215,6 +237,37 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+"""
+
+
+# ─── core/mongo.py ───────────────────────────────────────────────────────────
+
+
+def core_mongo(c: ProjectConfig) -> str:
+    return f"""\
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+
+from {c.slug}.core.config import settings
+
+_client: AsyncIOMotorClient | None = None
+
+
+def init_mongo() -> None:
+    global _client
+    _client = AsyncIOMotorClient(settings.MONGODB_URL)
+
+
+def close_mongo() -> None:
+    global _client
+    if _client is not None:
+        _client.close()
+        _client = None
+
+
+def get_mongo_db() -> AsyncIOMotorDatabase:
+    if _client is None:
+        raise RuntimeError("Mongo client not initialised — is the app running?")
+    return _client[settings.MONGODB_DB_NAME]
 """
 
 
@@ -299,6 +352,7 @@ from {c.slug}.core.config import settings
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=[settings.RATE_LIMIT_DEFAULT],
+    storage_uri=settings.RATE_LIMIT_STORAGE_URI,
 )
 """
 
@@ -369,12 +423,12 @@ def auth_schemas(c: ProjectConfig) -> str:
     return f"""\
 import uuid
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-{name_field}    password: str
+{name_field}    password: str = Field(min_length=8, max_length=128)
 
 
 class LoginRequest(BaseModel):
@@ -778,6 +832,14 @@ def test_register_duplicate(client):
     client.post("/api/v1/auth/register", json=payload)
     response = client.post("/api/v1/auth/register", json=payload)
     assert response.status_code == 409
+
+
+def test_register_short_password_rejected(client):
+    response = client.post(
+        "/api/v1/auth/register",
+        json={{"email": "weak@example.com", "password": "short"}},
+    )
+    assert response.status_code == 422
 
 
 def test_login(client):

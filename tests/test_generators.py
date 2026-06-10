@@ -62,6 +62,8 @@ _MATRIX = [
     ),
     (Framework.FLASK, {}),
     (Framework.FLASK, {"database": Database.MONGODB}),
+    (Framework.FLASK, {"user_model": UserModelConfig(has_name=True)}),
+    (Framework.FASTAPI, {"database": Database.MONGODB}),
     (Framework.DJANGO, {}),
     (Framework.DJANGO, {"user_model": UserModelConfig(has_name=True)}),
     (
@@ -121,3 +123,78 @@ def test_no_auth_skips_auth_module(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     root = get_generator(config).generate()
 
     assert not (root / f"src/{config.slug}/modules/auth").exists()
+
+
+# ─── safety guards (C1/C2/M3 regression tests) ──────────────────────────────
+
+
+@pytest.mark.parametrize("bad_name", ["../evil", "..", "sub/dir", "/tmp/evil", "a b", ""])
+def test_unsafe_project_names_rejected(
+    bad_name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = ProjectConfig(name=bad_name, framework=Framework.FASTAPI, init_git=False)
+
+    with pytest.raises(base.ScaffoldError):
+        get_generator(config)
+
+
+def test_nonempty_directory_requires_force(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    existing = tmp_path / "demo_app"
+    existing.mkdir()
+    (existing / "precious.txt").write_text("do not clobber")
+
+    config = _make_config(Framework.FASTAPI)
+
+    with pytest.raises(base.ScaffoldError):
+        get_generator(config).generate()
+    assert (existing / "precious.txt").read_text() == "do not clobber"
+
+
+def test_force_preserves_existing_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    existing = tmp_path / "demo_app"
+    existing.mkdir()
+    (existing / ".env").write_text("SECRET_KEY=my-real-production-secret\n")
+
+    config = _make_config(Framework.FASTAPI, force=True)
+    get_generator(config).generate()
+
+    assert (existing / ".env").read_text() == "SECRET_KEY=my-real-production-secret\n"
+
+
+def test_failed_generation_cleans_up_new_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = _make_config(Framework.FASTAPI)
+    generator = get_generator(config)
+    monkeypatch.setattr(
+        type(generator), "_scaffold", lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
+
+    with pytest.raises(RuntimeError):
+        generator.generate()
+
+    assert not (tmp_path / "demo_app").exists()
+
+
+def test_failed_generation_keeps_preexisting_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    existing = tmp_path / "demo_app"
+    existing.mkdir()
+    (existing / "precious.txt").write_text("keep me")
+
+    config = _make_config(Framework.FASTAPI, force=True)
+    generator = get_generator(config)
+    monkeypatch.setattr(
+        type(generator), "_scaffold", lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
+
+    with pytest.raises(RuntimeError):
+        generator.generate()
+
+    assert (existing / "precious.txt").read_text() == "keep me"

@@ -57,6 +57,7 @@ class ProjectConfig:
     user_model: UserModelConfig = field(default_factory=UserModelConfig)
     ai: AIConfig = field(default_factory=AIConfig)
     init_git: bool = True
+    force: bool = False  # allow scaffolding into a non-empty directory
 
     @property
     def slug(self) -> str:

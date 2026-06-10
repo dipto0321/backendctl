@@ -15,7 +15,7 @@ class FlaskGenerator(BaseGenerator):
 
         self._write("pyproject.toml", t.pyproject_toml(c))
         self._write(".env.example", t.env_example(c))
-        self._write(
+        self._write_if_absent(
             ".env",
             t.env_example(c)
             .replace("change-me-to-a-long-random-string", secrets.token_hex(32))
@@ -34,6 +34,7 @@ class FlaskGenerator(BaseGenerator):
         # Blueprints
         self._write(f"src/{s}/blueprints/__init__.py", "")
         self._write(f"src/{s}/blueprints/auth/__init__.py", "")
+        self._write(f"src/{s}/blueprints/auth/schemas.py", t.auth_schemas(c))
         self._write(f"src/{s}/blueprints/auth/routes.py", t.auth_routes(c))
         self._write(f"src/{s}/blueprints/auth/service.py", t.auth_service(c))
         self._write(f"src/{s}/blueprints/users/__init__.py", "")

@@ -14,7 +14,7 @@ class DjangoGenerator(BaseGenerator):
 
         self._write("pyproject.toml", t.pyproject_toml(c))
         self._write(".env.example", t.env_example(c))
-        self._write(
+        self._write_if_absent(
             ".env",
             t.env_example(c).replace("change-me-to-a-long-random-string", secrets.token_hex(32)),
         )

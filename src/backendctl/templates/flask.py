@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from backendctl.core.config import ProjectConfig
 
+_DEV_DEPS = """\
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.4.0",
+"""
+
 
 def pyproject_toml(c: ProjectConfig) -> str:
     pg_dep = '    "psycopg[binary]>=3.1.0",\n' if c.uses_sql else ""
@@ -31,14 +37,18 @@ dependencies = [
     "pydantic-settings>=2.5.0",
     "pwdlib[argon2]>=0.2.1",
     "python-dotenv>=1.0.0",
+    "gunicorn>=22.0.0",
 {pg_dep}{mongo_dep}{ai_dep}]
 
+# Dev deps are declared twice on purpose: [dependency-groups] for uv,
+# [project.optional-dependencies] so `pip install -e .[dev]` also works.
 [dependency-groups]
 dev = [
-    "pytest>=8.0.0",
-    "pytest-cov>=5.0.0",
-    "ruff>=0.4.0",
-]
+{_DEV_DEPS}]
+
+[project.optional-dependencies]
+dev = [
+{_DEV_DEPS}]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/{c.slug}"]
@@ -62,9 +72,7 @@ def _ai_dep(c: ProjectConfig) -> str:
 
 
 def env_example(c: ProjectConfig) -> str:
-    mongo_block = (
-        "\n# MongoDB\nMONGODB_URI=mongodb://localhost:27017/mydb\n" if c.uses_mongo else ""
-    )
+    mongo_block = "\n# MongoDB\nMONGO_URI=mongodb://localhost:27017/mydb\n" if c.uses_mongo else ""
     return f"""\
 FLASK_ENV=development
 SECRET_KEY=change-me-to-a-long-random-string
@@ -79,17 +87,21 @@ JWT_SECRET_KEY=another-long-random-secret
 JWT_ACCESS_TOKEN_EXPIRES=1800
 JWT_REFRESH_TOKEN_EXPIRES=604800
 
-# Rate limiting (uses in-memory storage by default)
+# Rate limiting — in-memory storage is per-process; use Redis when running
+# multiple workers, e.g. RATELIMIT_STORAGE_URI=redis://localhost:6379
 RATELIMIT_DEFAULT=100 per minute
+RATELIMIT_STORAGE_URI=memory://
 """
 
 
 def app_init(c: ProjectConfig) -> str:
+    mongo_name = ", mongo" if c.uses_mongo else ""
+    mongo_init = "    mongo.init_app(app)\n" if c.uses_mongo else ""
     return f"""\
 from flask import Flask
 
 from {c.slug}.config import Config
-from {c.slug}.extensions import db, jwt, limiter, migrate
+from {c.slug}.extensions import db, jwt, limiter, migrate{mongo_name}
 
 
 def create_app(config_class: type = Config) -> Flask:
@@ -101,6 +113,7 @@ def create_app(config_class: type = Config) -> Flask:
     migrate.init_app(app, db)
     jwt.init_app(app)
     limiter.init_app(app)
+{mongo_init}
 
     # Blueprints
     from {c.slug}.blueprints.auth.routes import auth_bp
@@ -118,21 +131,24 @@ def create_app(config_class: type = Config) -> Flask:
 
 
 def extensions(c: ProjectConfig) -> str:
+    mongo_import = "from flask_pymongo import PyMongo\n" if c.uses_mongo else ""
+    mongo_ext = "mongo = PyMongo()\n" if c.uses_mongo else ""
     return f"""\
 from flask_jwt_extended import JWTManager
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_migrate import Migrate
-from flask_sqlalchemy import SQLAlchemy
+{mongo_import}from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 migrate = Migrate()
 jwt = JWTManager()
 limiter = Limiter(key_func=get_remote_address)
-"""
+{mongo_ext}"""
 
 
 def config_py(c: ProjectConfig) -> str:
+    mongo_field = '\n    MONGO_URI: str = os.environ["MONGO_URI"]\n' if c.uses_mongo else ""
     return f"""\
 import os
 from datetime import timedelta
@@ -148,6 +164,7 @@ class Config:
 
     SQLALCHEMY_DATABASE_URI: str = os.environ["DATABASE_URL"]
     SQLALCHEMY_TRACK_MODIFICATIONS: bool = False
+{mongo_field}
 
     JWT_SECRET_KEY: str = os.environ["JWT_SECRET_KEY"]
     JWT_ACCESS_TOKEN_EXPIRES: timedelta = timedelta(
@@ -158,7 +175,7 @@ class Config:
     )
 
     RATELIMIT_DEFAULT: str = os.getenv("RATELIMIT_DEFAULT", "100 per minute")
-    RATELIMIT_STORAGE_URI: str = "memory://"
+    RATELIMIT_STORAGE_URI: str = os.getenv("RATELIMIT_STORAGE_URI", "memory://")
 
 
 class TestConfig(Config):
@@ -201,21 +218,51 @@ class User(db.Model):
 """
 
 
+def auth_schemas(c: ProjectConfig) -> str:
+    name_field = "    name: str | None = None\n" if c.user_model.has_name else ""
+    return f"""\
+from pydantic import BaseModel, EmailStr, Field
+
+
+class RegisterSchema(BaseModel):
+    email: EmailStr
+{name_field}    password: str = Field(min_length=8, max_length=128)
+
+
+class LoginSchema(BaseModel):
+    email: EmailStr
+    password: str
+"""
+
+
 def auth_routes(c: ProjectConfig) -> str:
     return f"""\
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
+from pydantic import ValidationError
 
+from {c.slug}.blueprints.auth.schemas import LoginSchema, RegisterSchema
 from {c.slug}.blueprints.auth.service import login_user, register_user
 from {c.slug}.extensions import limiter
 
 auth_bp = Blueprint("auth", __name__)
 
 
+def _validation_error(exc: ValidationError):
+    errors = [
+        {{"field": ".".join(str(loc) for loc in e["loc"]), "message": e["msg"]}}
+        for e in exc.errors()
+    ]
+    return jsonify({{"error": "Validation failed.", "details": errors}}), 400
+
+
 @auth_bp.post("/register")
 @limiter.limit("5 per minute")
 def register():
-    data = request.get_json()
+    try:
+        data = RegisterSchema.model_validate(request.get_json(silent=True) or {{}})
+    except ValidationError as exc:
+        return _validation_error(exc)
     user = register_user(data)
     return jsonify({{"id": user.id, "email": user.email}}), 201
 
@@ -223,7 +270,10 @@ def register():
 @auth_bp.post("/login")
 @limiter.limit("10 per minute")
 def login():
-    data = request.get_json()
+    try:
+        data = LoginSchema.model_validate(request.get_json(silent=True) or {{}})
+    except ValidationError as exc:
+        return _validation_error(exc)
     user = login_user(data)
     return jsonify({{
         "access_token": create_access_token(identity=user.id),
@@ -241,33 +291,37 @@ def refresh():
 
 
 def auth_service(c: ProjectConfig) -> str:
+    # Plain string (not an f-string template), so braces are written singly.
+    name_kwarg = (
+        "        **({'name': data.name} if data.name else {}),\n" if c.user_model.has_name else ""
+    )
     return f"""\
 from flask import abort
-
-from {c.slug}.extensions import db
-from {c.slug}.models.user import User
 from pwdlib import PasswordHash
 from pwdlib.hashers.argon2 import Argon2Hasher
+
+from {c.slug}.blueprints.auth.schemas import LoginSchema, RegisterSchema
+from {c.slug}.extensions import db
+from {c.slug}.models.user import User
 
 pwd = PasswordHash((Argon2Hasher(),))
 
 
-def register_user(data: dict) -> User:
-    if User.query.filter_by(email=data["email"]).first():
+def register_user(data: RegisterSchema) -> User:
+    if User.query.filter_by(email=data.email).first():
         abort(409, description="Email already registered.")
     user = User(
-        email=data["email"],
-        hashed_password=pwd.hash(data["password"]),
-        **({{"name": data["name"]}} if "name" in data else {{}}),
-    )
+        email=data.email,
+        hashed_password=pwd.hash(data.password),
+{name_kwarg}    )
     db.session.add(user)
     db.session.commit()
     return user
 
 
-def login_user(data: dict) -> User:
-    user = User.query.filter_by(email=data.get("email")).first()
-    if not user or not pwd.verify(data.get("password", ""), user.hashed_password):
+def login_user(data: LoginSchema) -> User:
+    user = User.query.filter_by(email=data.email).first()
+    if not user or not pwd.verify(data.password, user.hashed_password):
         abort(401, description="Invalid credentials.")
     if not user.is_active:
         abort(403, description="Account is inactive.")
@@ -320,22 +374,35 @@ def client(app):
 def tests_auth(c: ProjectConfig) -> str:
     return """\
 def test_register(client):
-    r = client.post("/api/v1/auth/register", json={"email": "a@b.com", "password": "pw"})
+    r = client.post("/api/v1/auth/register", json={"email": "a@b.com", "password": "secret123"})
     assert r.status_code == 201
 
+
 def test_register_duplicate(client):
-    payload = {"email": "d@b.com", "password": "pw"}
+    payload = {"email": "d@b.com", "password": "secret123"}
     client.post("/api/v1/auth/register", json=payload)
     r = client.post("/api/v1/auth/register", json=payload)
     assert r.status_code == 409
 
+
+def test_register_short_password_rejected(client):
+    r = client.post("/api/v1/auth/register", json={"email": "w@b.com", "password": "short"})
+    assert r.status_code == 400
+
+
+def test_register_malformed_body_rejected(client):
+    r = client.post("/api/v1/auth/register", data="not json", content_type="text/plain")
+    assert r.status_code == 400
+
+
 def test_login(client):
-    client.post("/api/v1/auth/register", json={"email": "l@b.com", "password": "pw"})
-    r = client.post("/api/v1/auth/login", json={"email": "l@b.com", "password": "pw"})
+    client.post("/api/v1/auth/register", json={"email": "l@b.com", "password": "secret123"})
+    r = client.post("/api/v1/auth/login", json={"email": "l@b.com", "password": "secret123"})
     assert r.status_code == 200
     assert "access_token" in r.get_json()
 
+
 def test_login_invalid(client):
-    r = client.post("/api/v1/auth/login", json={"email": "x@b.com", "password": "wrong"})
+    r = client.post("/api/v1/auth/login", json={"email": "x@b.com", "password": "wrongpass"})
     assert r.status_code == 401
 """

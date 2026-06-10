@@ -4,10 +4,19 @@ from __future__ import annotations
 
 from backendctl.core.config import ProjectConfig
 
+_DEV_DEPS = """\
+    "pytest>=8.0.0",
+    "pytest-django>=4.8.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.4.0",
+    "factory-boy>=3.3.0",
+"""
+
 
 def pyproject_toml(c: ProjectConfig) -> str:
+    # MongoDB is intentionally not supported for Django: djongo is unmaintained
+    # and incompatible with Django 5. The CLI blocks the combination upstream.
     pg_dep = '    "psycopg[binary]>=3.1.0",\n' if c.uses_sql else ""
-    mongo_dep = '    "pymongo>=4.8.0",\n    "djongo>=1.3.6",\n' if c.uses_mongo else ""
     ai_dep = _ai_dep(c)
 
     return f"""\
@@ -28,16 +37,18 @@ dependencies = [
     "django-cors-headers>=4.3.0",
     "django-environ>=0.11.0",
     "django-filter>=24.0",
-{pg_dep}{mongo_dep}{ai_dep}]
+    "gunicorn>=22.0.0",
+{pg_dep}{ai_dep}]
 
+# Dev deps are declared twice on purpose: [dependency-groups] for uv,
+# [project.optional-dependencies] so `pip install -e .[dev]` also works.
 [dependency-groups]
 dev = [
-    "pytest>=8.0.0",
-    "pytest-django>=4.8.0",
-    "pytest-cov>=5.0.0",
-    "ruff>=0.4.0",
-    "factory-boy>=3.3.0",
-]
+{_DEV_DEPS}]
+
+[project.optional-dependencies]
+dev = [
+{_DEV_DEPS}]
 
 [tool.hatch.build.targets.wheel]
 packages = ["config", "apps", "core"]
@@ -131,6 +142,9 @@ INSTALLED_APPS = [
     "django.contrib.auth",
     "rest_framework",
     "rest_framework_simplejwt",
+    # Required for BLACKLIST_AFTER_ROTATION to actually revoke rotated
+    # refresh tokens (run `manage.py migrate` to create its tables).
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "django_filters",
     "apps.users",
@@ -170,6 +184,9 @@ USE_TZ = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {{
+    # JSON-only API: the browsable HTML renderer would require TEMPLATES and
+    # staticfiles config that this scaffold intentionally omits.
+    "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
@@ -215,10 +232,17 @@ from config.settings.base import *  # noqa: F401, F403
 
 DEBUG = False
 
-# Add security headers, HTTPS redirects, etc. for production
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
+
+# HSTS — start small (e.g. 3600) if you're unsure, then raise to a year.
+SECURE_HSTS_SECONDS = 31536000
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+
+# Uncomment when running behind a reverse proxy that terminates TLS:
+# SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 """
 
 
@@ -394,7 +418,6 @@ from apps.authentication.serializers import RegisterSerializer
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
-    throttle_scope = "anon"
 
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
