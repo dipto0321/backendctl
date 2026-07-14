@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from backendctl.core.config import Framework, ProjectConfig
 
+DB_PASSWORD_PLACEHOLDER = "change-me-db-password"
+
 
 def gitignore() -> str:
     return """\

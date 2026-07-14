@@ -38,6 +38,11 @@ class BaseGenerator(ABC):
         if self.root.resolve().parent != Path.cwd().resolve():
             raise ScaffoldError(f"Refusing to scaffold outside the current directory: {self.root}")
 
+        try:
+            config.db_credentials.resolve(config.slug)
+        except ValueError as exc:
+            raise ScaffoldError(str(exc)) from exc
+
     # ─── public ───────────────────────────────────────────────────────────
 
     def generate(self) -> Path:

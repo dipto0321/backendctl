@@ -71,15 +71,26 @@ def _ai_dep(c: ProjectConfig) -> str:
     }.get(c.ai.provider.value, "")
 
 
-def env_example(c: ProjectConfig) -> str:
-    mongo_block = "\n# MongoDB\nMONGO_URI=mongodb://localhost:27017/mydb\n" if c.uses_mongo else ""
+def env_example(c: ProjectConfig, db_password: str | None = None) -> str:
+    from backendctl.templates.common import DB_PASSWORD_PLACEHOLDER
+
+    creds = c.db_credentials
+    mongo_block = (
+        f"\n# MongoDB\nMONGO_URI=mongodb://localhost:27017/{creds.db_name}\n"
+        if c.uses_mongo
+        else ""
+    )
+    if c.uses_sql:
+        db_url = creds.url("postgresql+psycopg", password=db_password or DB_PASSWORD_PLACEHOLDER)
+    else:
+        db_url = "sqlite:///app.db"
     return f"""\
 FLASK_ENV=development
 SECRET_KEY=change-me-to-a-long-random-string
 DEBUG=true
 
 # Database (PostgreSQL)
-DATABASE_URL=postgresql+psycopg://user:password@localhost:5432/{c.slug}
+DATABASE_URL={db_url}
 TEST_DATABASE_URL=sqlite:///test.db
 {mongo_block}
 # JWT

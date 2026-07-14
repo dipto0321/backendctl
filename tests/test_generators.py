@@ -198,3 +198,81 @@ def test_failed_generation_keeps_preexisting_directory(
         generator.generate()
 
     assert (existing / "precious.txt").read_text() == "keep me"
+
+
+# ─── DB credentials wired into env templates ────────────────────────────────
+
+
+def test_env_gets_real_credentials_example_gets_placeholder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = _make_config(Framework.FASTAPI)
+    config.db_credentials.db_name = "mydb"
+    config.db_credentials.db_user = "alice"
+    config.db_credentials.db_password = "s3cretpw"
+
+    root = get_generator(config).generate()
+
+    env = (root / ".env").read_text()
+    example = (root / ".env.example").read_text()
+    assert "postgresql+psycopg://alice:s3cretpw@localhost:5432/mydb" in env
+    assert "s3cretpw" not in example
+    assert "alice:change-me-db-password@localhost:5432/mydb" in example
+
+
+def test_credentials_default_to_slug(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = _make_config(Framework.FLASK)
+
+    root = get_generator(config).generate()
+
+    assert "://demo_app:" in (root / ".env").read_text()
+    assert "/demo_app" in (root / ".env").read_text()
+
+
+def test_django_env_uses_postgres_scheme(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = _make_config(Framework.DJANGO)
+    config.db_credentials.db_password = "djpw"
+
+    root = get_generator(config).generate()
+
+    assert "DATABASE_URL=postgres://demo_app:djpw@localhost:5432/demo_app" in (
+        root / ".env"
+    ).read_text()
+
+
+def test_mongo_only_falls_back_to_sqlite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    for framework in (Framework.FASTAPI, Framework.FLASK):
+        config = _make_config(framework, database=Database.MONGODB)
+        config.name = f"demo_{framework.value}"
+        root = get_generator(config).generate()
+        env = (root / ".env").read_text()
+        assert "sqlite:///" in env, framework
+        assert "postgresql+psycopg" not in env, framework
+        assert "psycopg" not in (root / "pyproject.toml").read_text(), framework
+
+
+def test_mongo_db_name_flows_into_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = _make_config(Framework.FASTAPI, database=Database.MONGODB)
+    config.db_credentials.db_name = "appdata"
+
+    root = get_generator(config).generate()
+
+    assert "MONGODB_DB_NAME=appdata" in (root / ".env").read_text()
+
+
+def test_invalid_credentials_raise_scaffold_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = _make_config(Framework.FASTAPI)
+    config.db_credentials.db_user = "bad;user"
+
+    with pytest.raises(base.ScaffoldError):
+        get_generator(config)
