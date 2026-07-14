@@ -2,15 +2,11 @@
 
 from __future__ import annotations
 
-from backendctl.core.config import Framework, ProjectConfig
+from backendctl.core.config import FRAMEWORK_LABELS, ProjectConfig
 
 
 def claude_md(config: ProjectConfig) -> str:
-    framework_label = {
-        Framework.FASTAPI: "FastAPI",
-        Framework.FLASK: "Flask",
-        Framework.DJANGO: "Django REST Framework",
-    }[config.framework]
+    framework_label = FRAMEWORK_LABELS[config.framework]
 
     provider_note = {
         "claude": "This project uses Claude as the AI coding assistant.",
@@ -83,11 +79,7 @@ def claude_md(config: ProjectConfig) -> str:
 
 
 def cursorrules(config: ProjectConfig) -> str:
-    framework_label = {
-        Framework.FASTAPI: "FastAPI",
-        Framework.FLASK: "Flask",
-        Framework.DJANGO: "Django REST Framework",
-    }[config.framework]
+    framework_label = FRAMEWORK_LABELS[config.framework]
 
     return f"""\
 # {config.name} — Cursor Rules

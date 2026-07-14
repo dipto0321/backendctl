@@ -56,6 +56,9 @@ packages = ["config", "apps", "core"]
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings.test"
 testpaths = ["tests"]
+# Migrations aren't generated until `manage.py makemigrations` is run; skip
+# applying them for tests so the suite passes on a fresh scaffold.
+addopts = "--no-migrations"
 
 [tool.ruff]
 line-length = 100

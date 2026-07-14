@@ -435,10 +435,4 @@ def new_command(
         print_error(f"Generation failed: {exc}")
         raise typer.Exit(1)
 
-    framework_label = {
-        Framework.FASTAPI: "FastAPI",
-        Framework.FLASK: "Flask",
-        Framework.DJANGO: "Django REST Framework",
-    }[config.framework]
-
-    print_done(config.name, framework_label, str(project_path))
+    print_done(config, str(project_path))
