@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from backendctl.core.config import Framework, ProjectConfig
 
 DB_PASSWORD_PLACEHOLDER = "change-me-db-password"
@@ -153,6 +155,13 @@ def readme(c: ProjectConfig) -> str:
 """
     )
 
+    mongo_note = (
+        "\n> **Note:** auth/user data is stored in SQLite (`app.db`); MongoDB is wired "
+        "for application data.\n"
+        if c.uses_mongo and not c.uses_sql
+        else ""
+    )
+
     return f"""\
 # {c.name}
 
@@ -168,13 +177,16 @@ uv sync
 #    A .env with freshly generated secrets was created for you.
 #    Review it and point DATABASE_URL at your database.
 
-# 3. Apply database migrations
+# 3. Start the database (Docker)
+docker compose up -d
+
+# 4. Apply database migrations
 {migrate}
 
-# 4. Run the dev server
+# 5. Run the dev server
 {run_dev}
 ```
-
+{mongo_note}
 ## Testing
 
 ```bash
@@ -219,3 +231,46 @@ EXPOSE 8000
 
 {cmd}
 """
+
+
+def docker_compose(c: ProjectConfig) -> str:
+    creds = c.db_credentials
+    services: list[str] = []
+    volumes: list[str] = []
+
+    if c.uses_sql:
+        services.append(
+            f"""\
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: {json.dumps(creds.db_name)}
+      POSTGRES_USER: {json.dumps(creds.db_user)}
+      POSTGRES_PASSWORD: {json.dumps(creds.db_password)}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {creds.db_user} -d {creds.db_name}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+"""
+        )
+        volumes.append("  postgres_data:")
+
+    if c.uses_mongo:
+        services.append(
+            """\
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+"""
+        )
+        volumes.append("  mongo_data:")
+
+    return "services:\n" + "\n".join(services) + "\nvolumes:\n" + "\n".join(volumes) + "\n"

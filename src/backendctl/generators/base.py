@@ -100,6 +100,7 @@ class BaseGenerator(ABC):
 
     def _write_common_files(self) -> None:
         from backendctl.templates.common import (
+            docker_compose,
             dockerfile,
             editorconfig,
             gitignore,
@@ -112,6 +113,7 @@ class BaseGenerator(ABC):
         self._write(".pre-commit-config.yaml", pre_commit_config())
         self._write("README.md", readme(self.config))
         self._write("Dockerfile", dockerfile(self.config))
+        self._write("docker-compose.yml", docker_compose(self.config))
         print_info("Common files written.")
 
     def _write_ai_files(self) -> None:
