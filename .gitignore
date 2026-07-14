@@ -227,3 +227,4 @@ REVIEW.md
 
 # Claude local settings
 .claude/settings.local.json
+.mimocode
