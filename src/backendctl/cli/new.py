@@ -11,6 +11,7 @@ import typer
 
 from backendctl.core.checks import run_preflight
 from backendctl.core.config import (
+    DB_IDENT_RE,
     AIConfig,
     AIProvider,
     AuthType,
@@ -65,6 +66,14 @@ def _validate_project_name(value: str) -> bool | str:
         return "Project name cannot be empty."
     if not _SLUG_RE.match(value.strip()):
         return "Use only letters, digits, hyphens, and underscores; must start with a letter."
+    return True
+
+
+def _validate_db_identifier(value: str) -> bool | str:
+    if not value.strip():
+        return "Value cannot be empty."
+    if not DB_IDENT_RE.match(value.strip()):
+        return "Use only letters, digits, and underscores; must not start with a digit."
     return True
 
 
@@ -163,6 +172,9 @@ def _run_wizard(config: ProjectConfig, provided: set[str], assume_yes: bool) -> 
             )
         )
 
+    # 5b. Database credentials
+    _ask_db_credentials(config, provided, assume_yes)
+
     # 6. Auth
     if "auth" not in provided and not assume_yes:
         config.auth = AuthType(
@@ -240,6 +252,32 @@ def _run_wizard(config: ProjectConfig, provided: set[str], assume_yes: bool) -> 
         )
 
 
+def _ask_db_credentials(config: ProjectConfig, provided: set[str], assume_yes: bool) -> None:
+    """Prompt for DB name/user/password. Unset fields resolve to defaults later."""
+    if assume_yes:
+        return
+    if "db_name" not in provided:
+        config.db_credentials.db_name = _ask(
+            questionary.text,
+            message="Database name:",
+            default=config.slug,
+            validate=_validate_db_identifier,
+        ).strip()
+    if config.uses_sql:
+        if "db_user" not in provided:
+            config.db_credentials.db_user = _ask(
+                questionary.text,
+                message="Database user:",
+                default=config.slug,
+                validate=_validate_db_identifier,
+            ).strip()
+        if "db_password" not in provided:
+            config.db_credentials.db_password = _ask(
+                questionary.password,
+                message="Database password (leave empty to auto-generate):",
+            )
+
+
 # ─── command ─────────────────────────────────────────────────────────────────
 
 
@@ -270,6 +308,15 @@ def new_command(
         None,
         "--ai",
         help="AI assistant setup: none | claude | openai",
+    ),
+    db_name: Optional[str] = typer.Option(
+        None, "--db-name", help="Database name (default: project slug)."
+    ),
+    db_user: Optional[str] = typer.Option(
+        None, "--db-user", help="PostgreSQL user (default: project slug)."
+    ),
+    db_password: Optional[str] = typer.Option(
+        None, "--db-password", help="PostgreSQL password (default: auto-generated)."
     ),
     yes: bool = typer.Option(
         False,
@@ -325,6 +372,20 @@ def new_command(
     if auth:
         config.auth = _parse_enum(AuthType, auth, "auth", "jwt, none")
         provided.add("auth")
+    for flag, field_name, value in (
+        ("--db-name", "db_name", db_name),
+        ("--db-user", "db_user", db_user),
+    ):
+        if value:
+            check = _validate_db_identifier(value)
+            if check is not True:
+                print_error(f"Invalid {flag} '{value}': {check}")
+                raise typer.Exit(1)
+            setattr(config.db_credentials, field_name, value.strip())
+            provided.add(field_name)
+    if db_password:
+        config.db_credentials.db_password = db_password
+        provided.add("db_password")
     if no_ai:
         config.ai = AIConfig(provider=AIProvider.NONE)
         provided.add("ai")
