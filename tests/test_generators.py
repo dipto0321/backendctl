@@ -341,3 +341,23 @@ def test_django_pytest_uses_sqlite_test_settings(
     test_settings = (root / "config/settings/test.py").read_text()
     assert "TEST_DATABASE_URL" in test_settings
     assert "sqlite" in test_settings
+
+
+# ─── Bug fixes (alembic & Flask test secrets) ────────────────────────────────
+
+
+def test_alembic_env_skips_auth_import_when_no_auth(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    root = get_generator(_make_config(Framework.FASTAPI, auth=AuthType.NONE)).generate()
+
+    assert "modules.auth" not in (root / "alembic/env.py").read_text()
+
+
+def test_flask_test_secrets_are_long(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    root = get_generator(_make_config(Framework.FLASK)).generate()
+
+    config_py = (root / "src/demo_app/config.py").read_text()
+    assert 'JWT_SECRET_KEY: str = "test-secret"' not in config_py

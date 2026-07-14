@@ -192,8 +192,8 @@ class Config:
 class TestConfig(Config):
     TESTING: bool = True
     SQLALCHEMY_DATABASE_URI: str = os.getenv("TEST_DATABASE_URL", "sqlite:///test.db")
-    JWT_SECRET_KEY: str = "test-secret"
-    SECRET_KEY: str = "test-secret"
+    JWT_SECRET_KEY: str = "test-secret-key-0123456789abcdef0123456789abcdef0123456789abcdef"
+    SECRET_KEY: str = "test-secret-key-0123456789abcdef0123456789abcdef0123456789abcdef"
     RATELIMIT_ENABLED: bool = False
 """
 
