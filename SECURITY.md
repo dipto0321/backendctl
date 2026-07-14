@@ -7,7 +7,7 @@ latest released version on PyPI.
 
 | Version | Supported |
 |---------|-----------|
-| latest `0.1.x` | ✅ |
+| latest `0.3.x` | ✅ |
 | older | ❌ |
 
 ## Reporting a vulnerability
