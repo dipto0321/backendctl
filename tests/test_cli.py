@@ -74,9 +74,21 @@ def test_db_flags_flow_into_generated_env(tmp_path, monkeypatch) -> None:
     result = runner.invoke(
         app,
         [
-            "new", "demo", "--framework", "fastapi", "--db", "postgres",
-            "--db-name", "customdb", "--db-user", "alice", "--db-password", "pw12345",
-            "--yes", "--no-git", "--no-ai",
+            "new",
+            "demo",
+            "--framework",
+            "fastapi",
+            "--db",
+            "postgres",
+            "--db-name",
+            "customdb",
+            "--db-user",
+            "alice",
+            "--db-password",
+            "pw12345",
+            "--yes",
+            "--no-git",
+            "--no-ai",
         ],
     )
 
@@ -112,9 +124,7 @@ def test_success_panel_is_framework_aware(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     _stub_generation(monkeypatch)
 
-    result = runner.invoke(
-        app, ["new", "demo", "-f", "flask", "--yes", "--no-git", "--no-ai"]
-    )
+    result = runner.invoke(app, ["new", "demo", "-f", "flask", "--yes", "--no-git", "--no-ai"])
 
     assert result.exit_code == 0, result.output
     assert "flask" in result.output

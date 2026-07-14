@@ -238,14 +238,13 @@ def test_django_env_uses_postgres_scheme(tmp_path: Path, monkeypatch: pytest.Mon
 
     root = get_generator(config).generate()
 
-    assert "DATABASE_URL=postgres://demo_app:djpw@localhost:5432/demo_app" in (
-        root / ".env"
-    ).read_text()
+    assert (
+        "DATABASE_URL=postgres://demo_app:djpw@localhost:5432/demo_app"
+        in (root / ".env").read_text()
+    )
 
 
-def test_mongo_only_falls_back_to_sqlite(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_mongo_only_falls_back_to_sqlite(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     for framework in (Framework.FASTAPI, Framework.FLASK):
         config = _make_config(framework, database=Database.MONGODB)
@@ -287,8 +286,8 @@ def test_compose_postgres_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 
     compose = (root / "docker-compose.yml").read_text()
     assert "postgres:16-alpine" in compose
-    assert "POSTGRES_DB: \"demo_app\"" in compose
-    assert "POSTGRES_PASSWORD: \"pgpw\"" in compose
+    assert 'POSTGRES_DB: "demo_app"' in compose
+    assert 'POSTGRES_PASSWORD: "pgpw"' in compose
     assert "mongo" not in compose
 
 
@@ -319,9 +318,7 @@ def test_compose_both_and_readme_mentions_compose(
 # ─── Django-specific fixes ────────────────────────────────────────────────────
 
 
-def test_django_migrations_packages_exist(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_django_migrations_packages_exist(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     root = get_generator(_make_config(Framework.DJANGO)).generate()
 
@@ -335,9 +332,9 @@ def test_django_pytest_uses_sqlite_test_settings(
     monkeypatch.chdir(tmp_path)
     root = get_generator(_make_config(Framework.DJANGO)).generate()
 
-    assert 'DJANGO_SETTINGS_MODULE = "config.settings.test"' in (
-        root / "pyproject.toml"
-    ).read_text()
+    assert (
+        'DJANGO_SETTINGS_MODULE = "config.settings.test"' in (root / "pyproject.toml").read_text()
+    )
     test_settings = (root / "config/settings/test.py").read_text()
     assert "TEST_DATABASE_URL" in test_settings
     assert "sqlite" in test_settings
