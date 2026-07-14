@@ -355,6 +355,15 @@ def test_alembic_env_skips_auth_import_when_no_auth(
     assert "modules.auth" not in (root / "alembic/env.py").read_text()
 
 
+def test_alembic_env_keeps_auth_import_with_auth(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    root = get_generator(_make_config(Framework.FASTAPI)).generate()
+
+    assert "modules.auth.models import User" in (root / "alembic/env.py").read_text()
+
+
 def test_flask_test_secrets_are_long(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     root = get_generator(_make_config(Framework.FLASK)).generate()

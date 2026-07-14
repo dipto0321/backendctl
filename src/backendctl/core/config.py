@@ -58,7 +58,7 @@ class AIConfig:
 
 
 # Safe for POSTGRES_DB/POSTGRES_USER and for URLs without quoting.
-DB_IDENT_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+DB_IDENT_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*\Z")
 
 
 @dataclass
