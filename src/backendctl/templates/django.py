@@ -54,7 +54,7 @@ dev = [
 packages = ["config", "apps", "core"]
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "config.settings.development"
+DJANGO_SETTINGS_MODULE = "config.settings.test"
 testpaths = ["tests"]
 
 [tool.ruff]
@@ -245,6 +245,18 @@ SECURE_HSTS_PRELOAD = True
 
 # Uncomment when running behind a reverse proxy that terminates TLS:
 # SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+"""
+
+
+def settings_test() -> str:
+    return """\
+from config.settings.base import *  # noqa: F401, F403
+from config.settings.base import env
+
+DEBUG = True
+
+# Tests run on SQLite by default — no PostgreSQL server required.
+DATABASES = {"default": env.db("TEST_DATABASE_URL", default="sqlite:///test.db")}
 """
 
 
