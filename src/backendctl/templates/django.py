@@ -75,15 +75,17 @@ def _ai_dep(c: ProjectConfig) -> str:
     }.get(c.ai.provider.value, "")
 
 
-def env_example(c: ProjectConfig) -> str:
-    pg = f"postgres://user:password@localhost:5432/{c.slug}" if c.uses_sql else ""
+def env_example(c: ProjectConfig, db_password: str | None = None) -> str:
+    from backendctl.templates.common import DB_PASSWORD_PLACEHOLDER
+
+    db_url = c.db_credentials.url("postgres", password=db_password or DB_PASSWORD_PLACEHOLDER)
     return f"""\
 DJANGO_SECRET_KEY=change-me-to-a-long-random-string
 DJANGO_DEBUG=True
 DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
 
 # Database
-DATABASE_URL={pg}
+DATABASE_URL={db_url}
 TEST_DATABASE_URL=sqlite:///test.db
 
 # CORS

@@ -86,10 +86,20 @@ def _ai_dep(c: ProjectConfig) -> str:
 # ─── .env.example ────────────────────────────────────────────────────────────
 
 
-def env_example(c: ProjectConfig) -> str:
+def env_example(c: ProjectConfig, db_password: str | None = None) -> str:
+    from backendctl.templates.common import DB_PASSWORD_PLACEHOLDER
+
+    creds = c.db_credentials
     mongo_line = (
-        "\nMONGODB_URL=mongodb://localhost:27017\nMONGODB_DB_NAME=mydb\n" if c.uses_mongo else ""
+        f"\nMONGODB_URL=mongodb://localhost:27017\nMONGODB_DB_NAME={creds.db_name}\n"
+        if c.uses_mongo
+        else ""
     )
+    if c.uses_sql:
+        db_url = creds.url("postgresql+psycopg", password=db_password or DB_PASSWORD_PLACEHOLDER)
+    else:
+        # No PostgreSQL selected: auth/user data lives in SQLite (no extra driver).
+        db_url = "sqlite:///./app.db"
 
     return f"""\
 # ── Security ──────────────────────────────────────────────
@@ -101,7 +111,7 @@ REFRESH_TOKEN_EXPIRE_DAYS=7
 
 # ── Database ──────────────────────────────────────────────
 # Production (PostgreSQL)
-DATABASE_URL=postgresql+psycopg://user:password@localhost:5432/{c.slug}
+DATABASE_URL={db_url}
 
 # Test (SQLite — used automatically in tests)
 TEST_DATABASE_URL=sqlite:///./test.db

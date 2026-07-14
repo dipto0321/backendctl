@@ -16,7 +16,9 @@ class DjangoGenerator(BaseGenerator):
         self._write(".env.example", t.env_example(c))
         self._write_if_absent(
             ".env",
-            t.env_example(c).replace("change-me-to-a-long-random-string", secrets.token_hex(32)),
+            t.env_example(c, db_password=c.db_credentials.db_password).replace(
+                "change-me-to-a-long-random-string", secrets.token_hex(32)
+            ),
         )
 
         # manage.py
