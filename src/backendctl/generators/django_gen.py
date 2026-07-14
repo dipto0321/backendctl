@@ -30,6 +30,7 @@ class DjangoGenerator(BaseGenerator):
         self._write("config/settings/base.py", t.settings_base(c))
         self._write("config/settings/development.py", t.settings_development())
         self._write("config/settings/production.py", t.settings_production())
+        self._write("config/settings/test.py", t.settings_test())
         self._write("config/urls.py", t.config_urls(c))
         self._write("config/wsgi.py", t.config_wsgi(c))
         self._write("config/asgi.py", t.config_asgi(c))
@@ -44,6 +45,7 @@ class DjangoGenerator(BaseGenerator):
         self._write("apps/users/serializers.py", t.users_serializers(c))
         self._write("apps/users/views.py", t.users_views())
         self._write("apps/users/urls.py", t.users_urls())
+        self._write("apps/users/migrations/__init__.py", "")
 
         # apps/authentication/
         self._write("apps/authentication/__init__.py", "")
@@ -51,6 +53,7 @@ class DjangoGenerator(BaseGenerator):
         self._write("apps/authentication/serializers.py", t.auth_serializers(c))
         self._write("apps/authentication/views.py", t.auth_views(c))
         self._write("apps/authentication/urls.py", t.auth_urls())
+        self._write("apps/authentication/migrations/__init__.py", "")
 
         # core/
         self._write("core/__init__.py", "")

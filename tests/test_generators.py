@@ -314,3 +314,30 @@ def test_compose_both_and_readme_mentions_compose(
     compose = (root / "docker-compose.yml").read_text()
     assert "postgres:16-alpine" in compose and "mongo:7" in compose
     assert "docker compose up -d" in (root / "README.md").read_text()
+
+
+# ─── Django-specific fixes ────────────────────────────────────────────────────
+
+
+def test_django_migrations_packages_exist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    root = get_generator(_make_config(Framework.DJANGO)).generate()
+
+    assert (root / "apps/users/migrations/__init__.py").is_file()
+    assert (root / "apps/authentication/migrations/__init__.py").is_file()
+
+
+def test_django_pytest_uses_sqlite_test_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    root = get_generator(_make_config(Framework.DJANGO)).generate()
+
+    assert 'DJANGO_SETTINGS_MODULE = "config.settings.test"' in (
+        root / "pyproject.toml"
+    ).read_text()
+    test_settings = (root / "config/settings/test.py").read_text()
+    assert "TEST_DATABASE_URL" in test_settings
+    assert "sqlite" in test_settings
