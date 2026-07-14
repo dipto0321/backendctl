@@ -38,8 +38,11 @@ def check_uv() -> bool:
             "  Docs: [link=https://docs.astral.sh/uv]https://docs.astral.sh/uv[/link]"
         )
         return False
-    result = subprocess.run(["uv", "--version"], capture_output=True, text=True)
-    print_success(f"uv {result.stdout.strip()} detected.")
+    try:
+        result = subprocess.run(["uv", "--version"], capture_output=True, text=True)
+        print_success(f"uv {result.stdout.strip()} detected.")
+    except Exception:
+        print_warning("Found `uv` but could not determine version.")
     return True
 
 

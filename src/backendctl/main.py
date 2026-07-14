@@ -1,5 +1,7 @@
 """Entry point for the backendctl CLI."""
 
+from __future__ import annotations
+
 import typer
 
 from backendctl import __version__
@@ -16,7 +18,7 @@ app = typer.Typer(
 app.command("new", help="Create a new backend project.")(new_command)
 
 
-def version_callback(value: bool) -> None:
+def version_callback(value: bool | None) -> None:
     if value:
         typer.echo(f"backendctl v{__version__}")
         raise typer.Exit()
@@ -24,7 +26,7 @@ def version_callback(value: bool) -> None:
 
 @app.callback()
 def main(
-    version: bool = typer.Option(
+    version: bool | None = typer.Option(
         None,
         "--version",
         "-v",
