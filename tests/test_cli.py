@@ -57,3 +57,52 @@ def test_nonempty_directory_without_force_fails_noninteractively(tmp_path, monke
 
     assert result.exit_code == 1
     assert (target / "precious.txt").read_text() == "keep"
+
+
+def _stub_generation(monkeypatch):
+    from backendctl.generators import base
+
+    monkeypatch.setattr(base.BaseGenerator, "_install_deps", lambda self: None)
+    monkeypatch.setattr(base.BaseGenerator, "_git_init", lambda self: None)
+    monkeypatch.setattr("backendctl.cli.new.run_preflight", lambda *a, **k: True)
+
+
+def test_db_flags_flow_into_generated_env(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _stub_generation(monkeypatch)
+
+    result = runner.invoke(
+        app,
+        [
+            "new", "demo", "--framework", "fastapi", "--db", "postgres",
+            "--db-name", "customdb", "--db-user", "alice", "--db-password", "pw12345",
+            "--yes", "--no-git", "--no-ai",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    env = (tmp_path / "demo" / ".env").read_text()
+    assert "postgresql+psycopg://alice:pw12345@localhost:5432/customdb" in env
+
+
+@pytest.mark.parametrize("flag", ["--db-name", "--db-user"])
+def test_invalid_db_identifier_flags_rejected(flag: str, tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _stub_generation(monkeypatch)
+
+    result = runner.invoke(app, ["new", "demo", flag, "bad;name", "--yes", "--no-git", "--no-ai"])
+
+    assert result.exit_code == 1
+    assert not (tmp_path / "demo").exists()
+
+
+def test_yes_generates_random_password(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _stub_generation(monkeypatch)
+
+    result = runner.invoke(app, ["new", "demo", "--yes", "--no-git", "--no-ai"])
+
+    assert result.exit_code == 0, result.output
+    env = (tmp_path / "demo" / ".env").read_text()
+    assert "change-me-db-password" not in env
+    assert "user:password@" not in env
