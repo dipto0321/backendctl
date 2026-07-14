@@ -662,16 +662,19 @@ async def get_me(current_user: User = Depends(get_current_user)):
 
 
 def alembic_env(c: ProjectConfig) -> str:
+    models_import = (
+        f"\n# Import all models so Alembic can detect them\n"
+        f"from {c.slug}.modules.auth.models import User  # noqa: F401\n"
+        if c.auth.value != "none"
+        else ""
+    )
     return f"""\
 import os
 from logging.config import fileConfig
 
 from alembic import context
 from sqlmodel import SQLModel
-
-# Import all models so Alembic can detect them
-from {c.slug}.modules.auth.models import User  # noqa: F401
-
+{models_import}
 config = context.config
 fileConfig(config.config_file_name)
 
