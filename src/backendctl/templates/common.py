@@ -244,7 +244,7 @@ def docker_compose(c: ProjectConfig) -> str:
       POSTGRES_USER: {json.dumps(creds.db_user)}
       POSTGRES_PASSWORD: {json.dumps(creds.db_password)}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -262,7 +262,7 @@ def docker_compose(c: ProjectConfig) -> str:
   mongo:
     image: mongo:7
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongo_data:/data/db
 """

@@ -55,8 +55,8 @@ Flags mark the field as provided → never re-asked. `--yes` without flags → d
 - **`.env`** — real `DATABASE_URL` (and `MONGODB_URL`/`MONGODB_DB_NAME` or `MONGO_URI`) built from resolved credentials, plus existing generated secrets.
 - **`.env.example`** — identical URL shape but password is the literal `change-me-db-password`. The real password never appears in a committed file.
 - **`docker-compose.yml`** (new, `templates/common.py`, written whenever the project uses postgres or mongo):
-  - postgres: `postgres:16-alpine`, `POSTGRES_DB/USER/PASSWORD` from credentials, `5432:5432`, named volume, `pg_isready` healthcheck.
-  - mongo: `mongo:7`, `27017:27017`, named volume.
+  - postgres: `postgres:16-alpine`, `POSTGRES_DB/USER/PASSWORD` from credentials, `127.0.0.1:5432:5432`, named volume, `pg_isready` healthcheck.
+  - mongo: `mongo:7`, `127.0.0.1:27017:27017`, named volume.
 - **Generated README** — quickstart gains `docker compose up -d` before the migrations step.
 
 Implementation note: `.env` is currently produced by string-replacing placeholders in `env_example(c)`. Template functions gain an explicit `db_password` parameter (defaulting to the placeholder) instead; generators call once for `.env.example` and once with the real password for `.env`. `_write_if_absent` semantics for `.env` are unchanged.
