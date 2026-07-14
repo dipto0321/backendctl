@@ -60,10 +60,11 @@ You'll be guided through:
 2. Package manager (`uv` / `pip`)
 3. Framework (FastAPI / Flask / Django REST Framework)
 4. Database (PostgreSQL+SQLite / MongoDB / both)
-5. Authentication (JWT / none)
-6. Optional `name` field on the `User` model
-7. AI-assistant config (Claude / OpenAI / none)
-8. Git initialization
+5. Database name / user / password (defaults: slug / slug / auto-generated)
+6. Authentication (JWT / none)
+7. Optional `name` field on the `User` model
+8. AI-assistant config (Claude / OpenAI / none)
+9. Git initialization
 
 ### Non-interactive flags
 
@@ -78,6 +79,9 @@ backendctl new myapi --framework fastapi --db postgres --pm uv --no-ai
 | `project_name` | string | Name of the new project (positional). |
 | `--framework`, `-f` | `fastapi` \| `flask` \| `django` | Web framework. |
 | `--db` | `postgres` \| `mongodb` \| `both` | Database. |
+| `--db-name` | string | Database name (default: project slug). |
+| `--db-user` | string | PostgreSQL user (default: project slug). |
+| `--db-password` | string | PostgreSQL password (default: auto-generated). |
 | `--pm` | `uv` \| `pip` | Package manager. |
 | `--no-git` | flag | Skip git initialization. |
 | `--no-ai` | flag | Skip AI-assistant setup. |
@@ -86,11 +90,13 @@ backendctl new myapi --framework fastapi --db postgres --pm uv --no-ai
 ### What you get
 
 After generation, `backendctl` runs pre-flight checks, writes the project, sets up
-git (optional), and installs dependencies. Then:
+git (optional), and installs dependencies. A `docker-compose.yml` is generated for
+your chosen database, and `.env` ships with working credentials that already match
+it — no manual copying or editing required to get a database running. Then:
 
 ```bash
 cd myapi
-cp .env.example .env      # fill in your secrets
+docker compose up -d      # start the database
 uv run fastapi dev        # or: flask run / python manage.py runserver
 ```
 

@@ -4,6 +4,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
+from backendctl.core.config import FRAMEWORK_LABELS, Framework, PackageManager, ProjectConfig
+
 console = Console()
 
 
@@ -34,17 +36,27 @@ def print_step(step: str) -> None:
     console.print(f"\n[bold cyan]  {step}[/bold cyan]")
 
 
-def print_done(project_name: str, framework: str, path: str) -> None:
+def print_done(config: ProjectConfig, path: str) -> None:
+    run_cmd = {
+        Framework.FASTAPI: f"fastapi dev src/{config.slug}/main.py",
+        Framework.FLASK: f'flask --app "{config.slug}:create_app()" run --debug',
+        Framework.DJANGO: "python manage.py runserver",
+    }[config.framework]
+    if config.package_manager is PackageManager.UV:
+        run_cmd = f"uv run {run_cmd}"
+    else:
+        run_cmd = f"source .venv/bin/activate && {run_cmd}"
+
     lines = [
-        f"[bold green]Project [cyan]{project_name}[/cyan] created![/bold green]",
+        f"[bold green]Project [cyan]{config.name}[/cyan] created![/bold green]",
         "",
-        f"  [dim]Framework :[/dim]  {framework}",
+        f"  [dim]Framework :[/dim]  {FRAMEWORK_LABELS[config.framework]}",
         f"  [dim]Location  :[/dim]  {path}",
         "",
         "  [bold]Next steps:[/bold]",
-        f"    [cyan]cd {project_name}[/cyan]",
-        "    [cyan]cp .env.example .env[/cyan]  [dim]# fill in your secrets[/dim]",
-        "    [cyan]uv run fastapi dev[/cyan]     "
-        "[dim]# or flask run / python manage.py runserver[/dim]",
+        f"    [cyan]cd {config.name}[/cyan]",
+        "    [cyan]docker compose up -d[/cyan]  [dim]# start the database[/dim]",
+        "    [dim]# .env was created with generated secrets — review it[/dim]",
+        f"    [cyan]{run_cmd}[/cyan]",
     ]
     console.print(Panel("\n".join(lines), border_style="green", padding=(0, 2)))

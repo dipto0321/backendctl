@@ -106,3 +106,17 @@ def test_yes_generates_random_password(tmp_path, monkeypatch) -> None:
     env = (tmp_path / "demo" / ".env").read_text()
     assert "change-me-db-password" not in env
     assert "user:password@" not in env
+
+
+def test_success_panel_is_framework_aware(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _stub_generation(monkeypatch)
+
+    result = runner.invoke(
+        app, ["new", "demo", "-f", "flask", "--yes", "--no-git", "--no-ai"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "flask" in result.output
+    assert "cp .env.example" not in result.output
+    assert "fastapi dev" not in result.output

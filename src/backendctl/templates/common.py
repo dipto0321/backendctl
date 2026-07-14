@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from backendctl.core.config import Framework, ProjectConfig
+from backendctl.core.config import FRAMEWORK_LABELS, Framework, ProjectConfig
 
 DB_PASSWORD_PLACEHOLDER = "change-me-db-password"
 
@@ -125,11 +125,7 @@ repos:
 
 
 def readme(c: ProjectConfig) -> str:
-    label = {
-        Framework.FASTAPI: "FastAPI",
-        Framework.FLASK: "Flask",
-        Framework.DJANGO: "Django REST Framework",
-    }[c.framework]
+    label = FRAMEWORK_LABELS[c.framework]
 
     run_dev = {
         Framework.FASTAPI: f"uv run fastapi dev src/{c.slug}/main.py",

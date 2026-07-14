@@ -13,6 +13,13 @@ class Framework(str, Enum):
     DJANGO = "django"
 
 
+FRAMEWORK_LABELS = {
+    Framework.FASTAPI: "FastAPI",
+    Framework.FLASK: "Flask",
+    Framework.DJANGO: "Django REST Framework",
+}
+
+
 class PackageManager(str, Enum):
     UV = "uv"
     PIP = "pip"
