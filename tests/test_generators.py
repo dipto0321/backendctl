@@ -276,3 +276,41 @@ def test_invalid_credentials_raise_scaffold_error(
 
     with pytest.raises(base.ScaffoldError):
         get_generator(config)
+
+
+def test_compose_postgres_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = _make_config(Framework.FASTAPI)
+    config.db_credentials.db_password = "pgpw"
+
+    root = get_generator(config).generate()
+
+    compose = (root / "docker-compose.yml").read_text()
+    assert "postgres:16-alpine" in compose
+    assert "POSTGRES_DB: \"demo_app\"" in compose
+    assert "POSTGRES_PASSWORD: \"pgpw\"" in compose
+    assert "mongo" not in compose
+
+
+def test_compose_mongo_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = _make_config(Framework.FASTAPI, database=Database.MONGODB)
+
+    root = get_generator(config).generate()
+
+    compose = (root / "docker-compose.yml").read_text()
+    assert "mongo:7" in compose
+    assert "postgres" not in compose
+
+
+def test_compose_both_and_readme_mentions_compose(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = _make_config(Framework.FLASK, database=Database.BOTH)
+
+    root = get_generator(config).generate()
+
+    compose = (root / "docker-compose.yml").read_text()
+    assert "postgres:16-alpine" in compose and "mongo:7" in compose
+    assert "docker compose up -d" in (root / "README.md").read_text()
