@@ -20,6 +20,7 @@ def pyproject_toml(c: ProjectConfig) -> str:
     mongo_dep = '    "motor>=3.4.0",\n' if c.uses_mongo else ""
     pg_dep = '    "psycopg[binary]>=3.1.0",\n' if c.uses_sql else ""
     ai_dep = _ai_dep(c)
+    mongo_dev = '    "mongomock-motor>=0.3.0",\n' if c.uses_mongo else ""
 
     return f"""\
 [build-system]
@@ -41,17 +42,17 @@ dependencies = [
     "pwdlib[argon2]>=0.2.1",
     "slowapi>=0.1.9",
     "python-multipart>=0.0.9",
-{pg_dep}{mongo_dep}{ai_dep}]
+    {pg_dep}{mongo_dep}{ai_dep}]
 
 # Dev deps are declared twice on purpose: [dependency-groups] for uv,
 # [project.optional-dependencies] so `pip install -e .[dev]` also works.
 [dependency-groups]
 dev = [
-{_DEV_DEPS}]
+{mongo_dev}{_DEV_DEPS}]
 
 [project.optional-dependencies]
 dev = [
-{_DEV_DEPS}]
+{mongo_dev}{_DEV_DEPS}]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/{c.slug}"]
@@ -81,6 +82,21 @@ def _ai_dep(c: ProjectConfig) -> str:
         "openai": '    "openai>=1.45.0",\n',
     }
     return sdk_map.get(c.ai.provider.value, "")
+
+
+def _health_db(c: ProjectConfig) -> str:
+    if not c.uses_mongo:
+        return ""
+    return f"""\
+    from {c.slug}.core.mongo import get_mongo_db
+
+    @app.get("/health/db", tags=["health"])
+    async def health_db():
+        db = get_mongo_db()
+        await db.command("ping")
+        return {{"mongodb": "ok"}}
+
+"""
 
 
 # ─── .env.example ────────────────────────────────────────────────────────────
@@ -141,10 +157,13 @@ def app_main(c: ProjectConfig) -> str:
     mongo_shutdown = "\n    close_mongo()" if c.uses_mongo else ""
 
     return f"""\
+import logging
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -152,6 +171,10 @@ from {c.slug}.api.v1.router import api_router
 from {c.slug}.core.config import settings
 from {c.slug}.core.database import create_db_and_tables
 {mongo_import}from {c.slug}.middleware.rate_limit import limiter
+
+
+if settings.DEBUG:
+    logging.basicConfig(level=logging.INFO)
 
 
 @asynccontextmanager
@@ -176,6 +199,10 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+    @app.exception_handler(Exception)
+    async def generic_exception_handler(request, exc):
+        return JSONResponse(status_code=500, content={{"detail": "Internal server error"}})
+
     # CORS
     app.add_middleware(
         CORSMiddleware,
@@ -192,7 +219,7 @@ def create_app() -> FastAPI:
     async def health_check():
         return {{"status": "ok"}}
 
-    return app
+{_health_db(c)}    return app
 
 
 app = create_app()
@@ -383,15 +410,23 @@ def api_v1_router(c: ProjectConfig) -> str:
         if c.auth.value != "none"
         else ""
     )
+    mongo_import = (
+        f"from {c.slug}.modules.items.router import router as items_router\n"
+        if c.uses_mongo
+        else ""
+    )
+    mongo_include = (
+        'api_router.include_router(items_router, prefix="/items", tags=["items"])\n'
+        if c.uses_mongo
+        else ""
+    )
 
     return f"""\
 from fastapi import APIRouter
 
-{auth_import}
-api_router = APIRouter()
+{auth_import}{mongo_import}api_router = APIRouter()
 
-{auth_include}
-"""
+{auth_include}{mongo_include}"""
 
 
 # ─── modules/auth/models.py ──────────────────────────────────────────────────
@@ -794,6 +829,16 @@ def alembic_script_mako() -> str:
 
 
 def tests_conftest(c: ProjectConfig) -> str:
+    mongo_patch = (
+        "\n\n@pytest.fixture(autouse=True)\ndef mock_mongo(monkeypatch):\n"
+        "    import mongomock_motor\n"
+        "    monkeypatch.setattr(\n"
+        f'        "{c.slug}.core.mongo._client",\n'
+        "        mongomock_motor.AsyncMongoMockClient(),\n"
+        "    )\n"
+        if c.uses_mongo
+        else ""
+    )
     return f"""\
 import pytest
 from fastapi.testclient import TestClient
@@ -825,7 +870,7 @@ def client_fixture(session: Session):
     client = TestClient(app)
     yield client
     app.dependency_overrides.clear()
-"""
+{mongo_patch}"""
 
 
 def tests_auth(c: ProjectConfig) -> str:
@@ -891,4 +936,68 @@ def test_get_me(client):
     response = client.get("/api/v1/users/me", headers={{"Authorization": f"Bearer {{token}}"}})
     assert response.status_code == 200
     assert response.json()["email"] == "me@example.com"
+"""
+
+
+def tests_health(c: ProjectConfig) -> str:
+    db_test = (
+        "\n\n"
+        "def test_health_db(client):\n"
+        '    r = client.get("/health/db")\n'
+        "    assert r.status_code == 200\n"
+        '    assert r.json() == {"mongodb": "ok"}\n'
+        if c.uses_mongo
+        else ""
+    )
+    return f"""\
+from fastapi.testclient import TestClient
+
+from {c.slug}.main import app
+
+client = TestClient(app)
+
+
+def test_health():
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json() == {{"status": "ok"}}
+{db_test}"""
+
+
+def tests_items(c: ProjectConfig) -> str:
+    return f"""\
+def test_create_and_list_item(client):
+    r = client.post("/api/v1/items", json={{"name": "Widget"}})
+    assert r.status_code == 201
+    r = client.get("/api/v1/items")
+    assert r.status_code == 200
+    data = r.json()
+    assert isinstance(data, list)
+    assert len(data) == 1
+"""
+
+
+def items_router(c: ProjectConfig) -> str:
+    return f"""\
+from fastapi import APIRouter
+
+from {c.slug}.core.mongo import get_mongo_db
+
+router = APIRouter()
+
+
+@router.get("/items")
+async def list_items():
+    items = []
+    async for doc in get_mongo_db().items.find():
+        doc["id"] = str(doc.pop("_id"))
+        items.append(doc)
+    return items
+
+
+@router.post("/items")
+async def create_item():
+    data = {{}}
+    get_mongo_db().items.insert_one(data)
+    return data, 201
 """

@@ -1,0 +1,34 @@
+schema: spec-driven
+
+# Project context (shown to AI when creating artifacts)
+context: |
+  backendctl is a CLI (Typer + Rich + questionary) that scaffolds
+  production-ready Python backends for FastAPI, Flask, and Django REST
+  Framework. Generated projects include JWT auth, a database choice
+  (PostgreSQL / MongoDB / both), migrations, rate limiting, tests, linting,
+  and optional AI-assistant config files.
+
+  Stack: Python 3.11+, typer, rich, questionary. Package manager: uv (or pip).
+
+  Commands:
+    - uv sync
+    - uv run pytest -q
+    - uv run ruff check src tests
+    - uv run ruff format --check src tests
+    - uv run mypy src
+
+  Layout: src/backendctl/{main.py, cli/new.py, core/{config,checks,console}.py,
+  generators/, templates/}. Generators write files; templates are pure
+  functions returning file contents (f-strings).
+
+  Invariants:
+    - Never use shell=True; subprocess always takes a list.
+    - Secrets are generated with secrets.token_hex/token_urlsafe and written
+      only into the gitignored .env; committed files use placeholders only.
+    - The real database password must never appear in .env.example, README.md,
+      or any committed template output.
+    - Project names are validated against ^[a-zA-Z][a-zA-Z0-9_-]*$ and must not
+      escape the current directory (path-traversal guard in BaseGenerator).
+    - Scaffolding refuses a non-empty directory unless --force is set; .env is
+      preserved on --force.
+    - Use conventional commits.

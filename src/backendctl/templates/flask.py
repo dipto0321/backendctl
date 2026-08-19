@@ -13,7 +13,9 @@ _DEV_DEPS = """\
 
 def pyproject_toml(c: ProjectConfig) -> str:
     pg_dep = '    "psycopg[binary]>=3.1.0",\n' if c.uses_sql else ""
-    mongo_dep = '    "pymongo>=4.8.0",\n    "flask-pymongo>=2.3.0",\n' if c.uses_mongo else ""
+    mongo_dep = '    "pymongo>=4.8.0",\n' if c.uses_mongo else ""
+    jwt_dep = '    "flask-jwt-extended>=4.6.0",\n' if c.auth.value != "none" else ""
+    mongo_dev = '    "mongomock>=4.3.0",\n' if c.uses_mongo else ""
     ai_dep = _ai_dep(c)
 
     return f"""\
@@ -31,24 +33,23 @@ dependencies = [
     "flask>=3.0.0",
     "flask-sqlalchemy>=3.1.0",
     "flask-migrate>=4.0.0",
-    "flask-jwt-extended>=4.6.0",
-    "flask-limiter>=3.7.0",
+{jwt_dep}    "flask-limiter>=3.7.0",
     "pydantic[email]>=2.7.0",
     "pydantic-settings>=2.5.0",
     "pwdlib[argon2]>=0.2.1",
     "python-dotenv>=1.0.0",
     "gunicorn>=22.0.0",
-{pg_dep}{mongo_dep}{ai_dep}]
+    {pg_dep}{mongo_dep}{ai_dep}]
 
 # Dev deps are declared twice on purpose: [dependency-groups] for uv,
 # [project.optional-dependencies] so `pip install -e .[dev]` also works.
 [dependency-groups]
 dev = [
-{_DEV_DEPS}]
+{mongo_dev}{_DEV_DEPS}]
 
 [project.optional-dependencies]
 dev = [
-{_DEV_DEPS}]
+{mongo_dev}{_DEV_DEPS}]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/{c.slug}"]
@@ -84,6 +85,13 @@ def env_example(c: ProjectConfig, db_password: str | None = None) -> str:
         db_url = creds.url("postgresql+psycopg", password=db_password or DB_PASSWORD_PLACEHOLDER)
     else:
         db_url = "sqlite:///app.db"
+    jwt_block = (
+        "\n# JWT\nJWT_SECRET_KEY=another-long-random-secret\n"
+        "JWT_ACCESS_TOKEN_EXPIRES=1800\n"
+        "JWT_REFRESH_TOKEN_EXPIRES=604800\n"
+        if c.auth.value != "none"
+        else ""
+    )
     return f"""\
 FLASK_ENV=development
 SECRET_KEY=change-me-to-a-long-random-string
@@ -92,13 +100,7 @@ DEBUG=true
 # Database (PostgreSQL)
 DATABASE_URL={db_url}
 TEST_DATABASE_URL=sqlite:///test.db
-{mongo_block}
-# JWT
-JWT_SECRET_KEY=another-long-random-secret
-JWT_ACCESS_TOKEN_EXPIRES=1800
-JWT_REFRESH_TOKEN_EXPIRES=604800
-
-# Rate limiting — in-memory storage is per-process; use Redis when running
+{mongo_block}{jwt_block}# Rate limiting — in-memory storage is per-process; use Redis when running
 # multiple workers, e.g. RATELIMIT_STORAGE_URI=redis://localhost:6379
 RATELIMIT_DEFAULT=100 per minute
 RATELIMIT_STORAGE_URI=memory://
@@ -108,32 +110,53 @@ RATELIMIT_STORAGE_URI=memory://
 def app_init(c: ProjectConfig) -> str:
     mongo_name = ", mongo" if c.uses_mongo else ""
     mongo_init = "    mongo.init_app(app)\n" if c.uses_mongo else ""
+    jwt_import = f"from {c.slug}.extensions import jwt\n" if c.auth.value != "none" else ""
+    jwt_init = "    jwt.init_app(app)\n" if c.auth.value != "none" else ""
+    auth_bp = (
+        f"    from {c.slug}.blueprints.auth.routes import auth_bp\n"
+        f"    from {c.slug}.blueprints.users.routes import users_bp\n\n"
+        '    app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")\n'
+        '    app.register_blueprint(users_bp, url_prefix="/api/v1/users")\n'
+        if c.auth.value != "none"
+        else ""
+    )
+    items_bp = (
+        f"    from {c.slug}.blueprints.items.routes import items_bp\n"
+        '    app.register_blueprint(items_bp, url_prefix="/api/v1/items")\n'
+        if c.uses_mongo
+        else ""
+    )
+    mongo_teardown = (
+        f"    from {c.slug}.mongo import close_mongo\n    app.teardown_appcontext(close_mongo)\n"
+        if c.uses_mongo
+        else ""
+    )
     return f"""\
-from flask import Flask
+import logging
+
+from flask import Flask, jsonify
 
 from {c.slug}.config import Config
-from {c.slug}.extensions import db, jwt, limiter, migrate{mongo_name}
-
-
-def create_app(config_class: type = Config) -> Flask:
+from {c.slug}.extensions import db, limiter, migrate{mongo_name}
+{jwt_import}def create_app(config_class: type = Config) -> Flask:
     app = Flask(__name__)
     app.config.from_object(config_class)
+
+    if app.config["DEBUG"]:
+        logging.basicConfig(level=logging.INFO)
+
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        logging.getLogger(__name__).exception("Unhandled exception")
+        return jsonify({{"detail": "Internal server error"}}), 500
 
     # Extensions
     db.init_app(app)
     migrate.init_app(app, db)
-    jwt.init_app(app)
-    limiter.init_app(app)
+{jwt_init}    limiter.init_app(app)
 {mongo_init}
-
-    # Blueprints
-    from {c.slug}.blueprints.auth.routes import auth_bp
-    from {c.slug}.blueprints.users.routes import users_bp
-
-    app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
-    app.register_blueprint(users_bp, url_prefix="/api/v1/users")
-
-    @app.get("/health")
+{mongo_teardown}    # Blueprints
+{auth_bp}{items_bp}    @app.get("/health")
     def health():
         return {{"status": "ok"}}
 
@@ -142,24 +165,33 @@ def create_app(config_class: type = Config) -> Flask:
 
 
 def extensions(c: ProjectConfig) -> str:
-    mongo_import = "from flask_pymongo import PyMongo\n" if c.uses_mongo else ""
-    mongo_ext = "mongo = PyMongo()\n" if c.uses_mongo else ""
+    jwt_import = "from flask_jwt_extended import JWTManager\n" if c.auth.value != "none" else ""
+    jwt_ext = "jwt = JWTManager()\n" if c.auth.value != "none" else ""
     return f"""\
-from flask_jwt_extended import JWTManager
-from flask_limiter import Limiter
+{jwt_import}from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_migrate import Migrate
-{mongo_import}from flask_sqlalchemy import SQLAlchemy
+from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 migrate = Migrate()
-jwt = JWTManager()
-limiter = Limiter(key_func=get_remote_address)
-{mongo_ext}"""
+{jwt_ext}limiter = Limiter(key_func=get_remote_address)
+"""
 
 
 def config_py(c: ProjectConfig) -> str:
     mongo_field = '\n    MONGO_URI: str = os.environ["MONGO_URI"]\n' if c.uses_mongo else ""
+    jwt_block = (
+        '\n    JWT_SECRET_KEY: str = os.environ["JWT_SECRET_KEY"]\n'
+        "    JWT_ACCESS_TOKEN_EXPIRES: timedelta = timedelta(\n"
+        '        seconds=int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES", "1800"))\n'
+        "    )\n"
+        "    JWT_REFRESH_TOKEN_EXPIRES: timedelta = timedelta(\n"
+        '        seconds=int(os.getenv("JWT_REFRESH_TOKEN_EXPIRES", "604800"))\n'
+        "    )\n"
+        if c.auth.value != "none"
+        else ""
+    )
     return f"""\
 import os
 from datetime import timedelta
@@ -175,24 +207,13 @@ class Config:
 
     SQLALCHEMY_DATABASE_URI: str = os.environ["DATABASE_URL"]
     SQLALCHEMY_TRACK_MODIFICATIONS: bool = False
-{mongo_field}
-
-    JWT_SECRET_KEY: str = os.environ["JWT_SECRET_KEY"]
-    JWT_ACCESS_TOKEN_EXPIRES: timedelta = timedelta(
-        seconds=int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES", "1800"))
-    )
-    JWT_REFRESH_TOKEN_EXPIRES: timedelta = timedelta(
-        seconds=int(os.getenv("JWT_REFRESH_TOKEN_EXPIRES", "604800"))
-    )
-
-    RATELIMIT_DEFAULT: str = os.getenv("RATELIMIT_DEFAULT", "100 per minute")
+{mongo_field}{jwt_block}    RATELIMIT_DEFAULT: str = os.getenv("RATELIMIT_DEFAULT", "100 per minute")
     RATELIMIT_STORAGE_URI: str = os.getenv("RATELIMIT_STORAGE_URI", "memory://")
 
 
 class TestConfig(Config):
     TESTING: bool = True
     SQLALCHEMY_DATABASE_URI: str = os.getenv("TEST_DATABASE_URL", "sqlite:///test.db")
-    JWT_SECRET_KEY: str = "test-secret-key-0123456789abcdef0123456789abcdef0123456789abcdef"
     SECRET_KEY: str = "test-secret-key-0123456789abcdef0123456789abcdef0123456789abcdef"
     RATELIMIT_ENABLED: bool = False
 """
@@ -360,6 +381,16 @@ def get_me():
 
 
 def tests_conftest(c: ProjectConfig) -> str:
+    mongo_patch = (
+        "\n\n@pytest.fixture(autouse=True)\ndef mock_mongo(monkeypatch):\n"
+        "    import mongomock\n"
+        "    monkeypatch.setattr(\n"
+        '        "pymongo.MongoClient",\n'
+        "        lambda *a, **k: mongomock.MongoClient(),\n"
+        "    )\n"
+        if c.uses_mongo
+        else ""
+    )
     return f"""\
 import pytest
 from {c.slug} import create_app
@@ -379,7 +410,7 @@ def app():
 @pytest.fixture()
 def client(app):
     return app.test_client()
-"""
+{mongo_patch}"""
 
 
 def tests_auth(c: ProjectConfig) -> str:
@@ -416,4 +447,84 @@ def test_login(client):
 def test_login_invalid(client):
     r = client.post("/api/v1/auth/login", json={"email": "x@b.com", "password": "wrongpass"})
     assert r.status_code == 401
+"""
+
+
+def tests_health(c: ProjectConfig) -> str:
+    db_test = (
+        "\n\n"
+        "def test_health_db(client):\n"
+        '    r = client.get("/health/db")\n'
+        "    assert r.status_code == 200\n"
+        '    assert r.get_json() == {"mongodb": "ok"}\n'
+        if c.uses_mongo
+        else ""
+    )
+    return f"""\
+def test_health(client):
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.get_json() == {{"status": "ok"}}
+{db_test}"""
+
+
+def tests_items(c: ProjectConfig) -> str:
+    return """\
+def test_create_and_list_item(client):
+    r = client.post("/api/v1/items", json={"name": "Widget"})
+    assert r.status_code == 201
+    r = client.get("/api/v1/items")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert isinstance(data, list)
+    assert len(data) == 1
+"""
+
+
+def mongo_py(c: ProjectConfig) -> str:
+    return """\
+from pymongo import MongoClient
+from flask import current_app
+
+_client = None
+
+
+def get_db():
+    global _client
+    if _client is None:
+        _client = MongoClient(current_app.config["MONGO_URI"])
+    return _client.get_default_database()
+
+
+def close_mongo(e=None):
+    global _client
+    if _client is not None:
+        _client.close()
+        _client = None
+"""
+
+
+def items_routes(c: ProjectConfig) -> str:
+    return f"""\
+from flask import Blueprint, jsonify, request
+
+from {c.slug}.mongo import get_db
+
+items_bp = Blueprint("items", __name__)
+
+
+@items_bp.get("/items")
+def list_items():
+    items = []
+    for doc in get_db().items.find():
+        doc["id"] = str(doc.pop("_id"))
+        items.append(doc)
+    return jsonify(items)
+
+
+@items_bp.post("/items")
+def create_item():
+    data = request.get_json(force=True) or {{}}
+    get_db().items.insert_one(data)
+    return jsonify(data), 201
 """

@@ -17,6 +17,7 @@ def pyproject_toml(c: ProjectConfig) -> str:
     # MongoDB is intentionally not supported for Django: djongo is unmaintained
     # and incompatible with Django 5. The CLI blocks the combination upstream.
     pg_dep = '    "psycopg[binary]>=3.1.0",\n' if c.uses_sql else ""
+    jwt_dep = '    "djangorestframework-simplejwt>=5.3.0",\n' if c.auth.value != "none" else ""
     ai_dep = _ai_dep(c)
 
     return f"""\
@@ -33,12 +34,11 @@ requires-python = ">=3.11"
 dependencies = [
     "django>=5.0.0",
     "djangorestframework>=3.15.0",
-    "djangorestframework-simplejwt>=5.3.0",
-    "django-cors-headers>=4.3.0",
+{jwt_dep}    "django-cors-headers>=4.3.0",
     "django-environ>=0.11.0",
     "django-filter>=24.0",
     "gunicorn>=22.0.0",
-{pg_dep}{ai_dep}]
+    {pg_dep}{ai_dep}]
 
 # Dev deps are declared twice on purpose: [dependency-groups] for uv,
 # [project.optional-dependencies] so `pip install -e .[dev]` also works.
@@ -82,6 +82,15 @@ def env_example(c: ProjectConfig, db_password: str | None = None) -> str:
     from backendctl.templates.common import DB_PASSWORD_PLACEHOLDER
 
     db_url = c.db_credentials.url("postgres", password=db_password or DB_PASSWORD_PLACEHOLDER)
+    jwt_block = (
+        """
+# JWT
+ACCESS_TOKEN_LIFETIME_MINUTES=30
+REFRESH_TOKEN_LIFETIME_DAYS=7
+"""
+        if c.auth.value != "none"
+        else ""
+    )
     return f"""\
 DJANGO_SECRET_KEY=change-me-to-a-long-random-string
 DJANGO_DEBUG=True
@@ -93,11 +102,7 @@ TEST_DATABASE_URL=sqlite:///test.db
 
 # CORS
 CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
-
-# JWT
-ACCESS_TOKEN_LIFETIME_MINUTES=30
-REFRESH_TOKEN_LIFETIME_DAYS=7
-"""
+{jwt_block}"""
 
 
 def manage_py(c: ProjectConfig) -> str:
@@ -124,7 +129,41 @@ if __name__ == "__main__":
 
 
 def settings_base(c: ProjectConfig) -> str:
-    return f"""\
+    jwt_installed_apps = (
+        '    "rest_framework_simplejwt",\n'
+        "    # Required for BLACKLIST_AFTER_ROTATION to actually revoke rotated\n"
+        "    # refresh tokens (run `manage.py migrate` to create its tables).\n"
+        '    "rest_framework_simplejwt.token_blacklist",\n'
+        if c.auth.value != "none"
+        else ""
+    )
+    auth_installed_apps = '    "apps.authentication",\n' if c.auth.value != "none" else ""
+    auth_classes = (
+        '        "rest_framework_simplejwt.authentication.JWTAuthentication",\n'
+        if c.auth.value != "none"
+        else ""
+    )
+    permission_classes = (
+        '        "rest_framework.permissions.IsAuthenticated",\n'
+        if c.auth.value == "jwt"
+        else '        "rest_framework.permissions.AllowAny",\n'
+    )
+    simple_jwt = (
+        "\n"
+        "from datetime import timedelta\n"
+        "\n"
+        "SIMPLE_JWT = {\n"
+        '    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env.int("ACCESS_TOKEN_LIFETIME_MINUTES", default=30)),\n'
+        '    "REFRESH_TOKEN_LIFETIME": timedelta(days=env.int("REFRESH_TOKEN_LIFETIME_DAYS", default=7)),\n'
+        '    "ROTATE_REFRESH_TOKENS": True,\n'
+        '    "BLACKLIST_AFTER_ROTATION": True,\n'
+        '    "AUTH_HEADER_TYPES": ("Bearer",),\n'
+        "}\n"
+        if c.auth.value != "none"
+        else ""
+    )
+    return (
+        f"""\
 from pathlib import Path
 
 import environ
@@ -146,15 +185,10 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.auth",
     "rest_framework",
-    "rest_framework_simplejwt",
-    # Required for BLACKLIST_AFTER_ROTATION to actually revoke rotated
-    # refresh tokens (run `manage.py migrate` to create its tables).
-    "rest_framework_simplejwt.token_blacklist",
-    "corsheaders",
+{jwt_installed_apps}    "corsheaders",
     "django_filters",
     "apps.users",
-    "apps.authentication",
-]
+{auth_installed_apps}]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -193,9 +227,9 @@ REST_FRAMEWORK = {{
     # staticfiles config that this scaffold intentionally omits.
     "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
-    ),
-    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+{auth_classes}    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+{permission_classes}    ),
     "DEFAULT_FILTER_BACKENDS": ("django_filters.rest_framework.DjangoFilterBackend",),
     "DEFAULT_PAGINATION_CLASS": "core.pagination.StandardPagination",
     "PAGE_SIZE": 20,
@@ -207,20 +241,34 @@ REST_FRAMEWORK = {{
         "anon": "100/day",
         "user": "1000/day",
     }},
-}}
+    "EXCEPTION_HANDLER": "core.exceptions.custom_exception_handler",
+}}{simple_jwt}
 
-from datetime import timedelta
-
-SIMPLE_JWT = {{
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env.int("ACCESS_TOKEN_LIFETIME_MINUTES", default=30)),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=env.int("REFRESH_TOKEN_LIFETIME_DAYS", default=7)),
-    "ROTATE_REFRESH_TOKENS": True,
-    "BLACKLIST_AFTER_ROTATION": True,
-    "AUTH_HEADER_TYPES": ("Bearer",),
+LOGGING = {{
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {{
+        "verbose": {{
+            "format": "{{levelname}} {{asctime}} {{module}} {{message}}",
+            "style": "{{",
+        }},
+    }},
+    "handlers": {{
+        "console": {{
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        }},
+    }},
+    "root": {{
+        "handlers": ["console"],
+        "level": "INFO" if DEBUG else "WARNING",
+    }},
 }}
 
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 """
+        ""
+    )
 
 
 def settings_development() -> str:
@@ -264,12 +312,18 @@ DATABASES = {"default": env.db("TEST_DATABASE_URL", default="sqlite:///test.db")
 
 
 def config_urls(c: ProjectConfig) -> str:
+    auth_urls = (
+        '    path("api/v1/auth/", include("apps.authentication.urls")),\n'
+        '    path("api/v1/users/", include("apps.users.urls")),\n'
+        if c.auth.value != "none"
+        else ""
+    )
     return f"""\
 from django.urls import include, path
+from django.http import JsonResponse
 
 urlpatterns = [
-    path("api/v1/auth/", include("apps.authentication.urls")),
-    path("api/v1/users/", include("apps.users.urls")),
+{auth_urls}    path("health/", lambda r: JsonResponse({{"status": "ok"}})),
 ]
 """
 
@@ -551,4 +605,17 @@ def test_get_me(auth_client):
     r = auth_client.get("/api/v1/users/me/")
     assert r.status_code == 200
     assert r.data["email"] == "test@example.com"
+"""
+
+
+def tests_health(c: ProjectConfig) -> str:
+    return """\
+import pytest
+
+
+@pytest.mark.django_db
+def test_health(api_client):
+    r = api_client.get("/health/")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}
 """

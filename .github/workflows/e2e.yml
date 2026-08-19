@@ -1,0 +1,65 @@
+name: E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - framework: fastapi
+            db: postgres
+          - framework: flask
+            db: postgres
+          - framework: django
+            db: postgres
+          - framework: fastapi
+            db: mongodb
+          - framework: flask
+            db: mongodb
+          - framework: fastapi
+            db: postgres
+            auth: none
+          - framework: flask
+            db: postgres
+            auth: none
+          - framework: django
+            db: postgres
+            auth: none
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: Generate project
+        run: |
+          AUTH_FLAG=""
+          if [ "${{ matrix.auth }}" = "none" ]; then
+            AUTH_FLAG="--auth none"
+          fi
+          uv run backendctl new demo_e2e --framework ${{ matrix.framework }} --db ${{ matrix.db }} $AUTH_FLAG --yes --no-git --no-ai
+      - name: Install deps
+        run: |
+          cd demo_e2e
+          uv sync
+      - name: Run tests
+        run: |
+          cd demo_e2e
+          uv run pytest -q
+      - name: FastAPI migrations
+        if: matrix.framework == 'fastapi'
+        run: |
+          cd demo_e2e
+          DATABASE_URL=sqlite:///./app.db uv run alembic revision --autogenerate -m init
+      - name: Django migrations
+        if: matrix.framework == 'django'
+        run: |
+          cd demo_e2e
+          uv run python manage.py makemigrations --noinput
+          uv run python manage.py migrate --noinput

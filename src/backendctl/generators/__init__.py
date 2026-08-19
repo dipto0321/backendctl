@@ -9,7 +9,7 @@ def get_generator(config: ProjectConfig) -> BaseGenerator:
     from backendctl.generators.fastapi_gen import FastAPIGenerator
     from backendctl.generators.flask_gen import FlaskGenerator
 
-    mapping = {
+    mapping: dict[Framework, type[BaseGenerator]] = {
         Framework.FASTAPI: FastAPIGenerator,
         Framework.FLASK: FlaskGenerator,
         Framework.DJANGO: DjangoGenerator,

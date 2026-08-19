@@ -130,3 +130,26 @@ def test_success_panel_is_framework_aware(tmp_path, monkeypatch) -> None:
     assert "flask" in result.output
     assert "cp .env.example" not in result.output
     assert "fastapi dev" not in result.output
+
+
+def test_verbose_flag_shows_traceback(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _stub_generation(monkeypatch)
+
+    from backendctl.generators.django_gen import DjangoGenerator
+    from backendctl.generators.fastapi_gen import FastAPIGenerator
+    from backendctl.generators.flask_gen import FlaskGenerator
+
+    def boom(self):
+        raise RuntimeError("kaboom")
+
+    for cls in (FastAPIGenerator, FlaskGenerator, DjangoGenerator):
+        monkeypatch.setattr(cls, "_scaffold", boom)
+
+    result = runner.invoke(
+        app, ["new", "demo", "--framework", "fastapi", "--yes", "--verbose", "--no-git", "--no-ai"]
+    )
+
+    assert result.exception is not None
+    assert isinstance(result.exception, RuntimeError)
+    assert str(result.exception) == "kaboom"
