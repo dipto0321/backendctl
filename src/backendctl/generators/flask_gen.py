@@ -26,24 +26,35 @@ class FlaskGenerator(BaseGenerator):
         self._write(f"src/{s}/__init__.py", t.app_init(c))
         self._write(f"src/{s}/extensions.py", t.extensions(c))
         self._write(f"src/{s}/config.py", t.config_py(c))
+        if c.uses_mongo:
+            self._write(f"src/{s}/mongo.py", t.mongo_py(c))
 
         # Models
         self._write(f"src/{s}/models/__init__.py", "")
-        self._write(f"src/{s}/models/user.py", t.user_model(c))
+        if c.auth.value != "none":
+            self._write(f"src/{s}/models/user.py", t.user_model(c))
 
         # Blueprints
         self._write(f"src/{s}/blueprints/__init__.py", "")
-        self._write(f"src/{s}/blueprints/auth/__init__.py", "")
-        self._write(f"src/{s}/blueprints/auth/schemas.py", t.auth_schemas(c))
-        self._write(f"src/{s}/blueprints/auth/routes.py", t.auth_routes(c))
-        self._write(f"src/{s}/blueprints/auth/service.py", t.auth_service(c))
-        self._write(f"src/{s}/blueprints/users/__init__.py", "")
-        self._write(f"src/{s}/blueprints/users/routes.py", t.users_routes(c))
+        if c.auth.value != "none":
+            self._write(f"src/{s}/blueprints/auth/__init__.py", "")
+            self._write(f"src/{s}/blueprints/auth/schemas.py", t.auth_schemas(c))
+            self._write(f"src/{s}/blueprints/auth/routes.py", t.auth_routes(c))
+            self._write(f"src/{s}/blueprints/auth/service.py", t.auth_service(c))
+            self._write(f"src/{s}/blueprints/users/__init__.py", "")
+            self._write(f"src/{s}/blueprints/users/routes.py", t.users_routes(c))
+        if c.uses_mongo:
+            self._write(f"src/{s}/blueprints/items/__init__.py", "")
+            self._write(f"src/{s}/blueprints/items/routes.py", t.items_routes(c))
 
         # Tests
         self._write("tests/__init__.py", "")
         self._write("tests/conftest.py", t.tests_conftest(c))
-        self._write("tests/test_auth.py", t.tests_auth(c))
+        self._write("tests/test_health.py", t.tests_health(c))
+        if c.auth.value != "none":
+            self._write("tests/test_auth.py", t.tests_auth(c))
+        if c.uses_mongo:
+            self._write("tests/test_items.py", t.tests_items(c))
 
         # Migrations placeholder (Flask-Migrate creates this on first run)
         self._touch("migrations/.gitkeep")

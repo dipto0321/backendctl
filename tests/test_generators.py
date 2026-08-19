@@ -61,10 +61,12 @@ _MATRIX = [
         {"user_model": UserModelConfig(has_name=True)},
     ),
     (Framework.FLASK, {}),
+    (Framework.FLASK, {"auth": AuthType.NONE}),
     (Framework.FLASK, {"database": Database.MONGODB}),
     (Framework.FLASK, {"user_model": UserModelConfig(has_name=True)}),
     (Framework.FASTAPI, {"database": Database.MONGODB}),
     (Framework.DJANGO, {}),
+    (Framework.DJANGO, {"auth": AuthType.NONE}),
     (Framework.DJANGO, {"user_model": UserModelConfig(has_name=True)}),
     (
         Framework.FASTAPI,
@@ -123,6 +125,74 @@ def test_no_auth_skips_auth_module(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     root = get_generator(config).generate()
 
     assert not (root / f"src/{config.slug}/modules/auth").exists()
+
+
+def test_flask_auth_none_skips_auth_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = _make_config(Framework.FLASK, auth=AuthType.NONE)
+
+    root = get_generator(config).generate()
+
+    assert not (root / f"src/{config.slug}/blueprints/auth").exists()
+    assert not (root / f"src/{config.slug}/blueprints/users").exists()
+    assert not (root / f"src/{config.slug}/models/user.py").exists()
+    assert not (root / "tests/test_auth.py").exists()
+    assert (root / "tests/test_health.py").exists()
+
+
+def test_django_auth_none_skips_auth_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = _make_config(Framework.DJANGO, auth=AuthType.NONE)
+
+    root = get_generator(config).generate()
+
+    assert not (root / "apps/authentication").exists()
+    assert not (root / "apps/users/serializers.py").exists()
+    assert not (root / "apps/users/views.py").exists()
+    assert not (root / "apps/users/urls.py").exists()
+    assert not (root / "tests/test_auth.py").exists()
+    assert (root / "tests/test_health.py").exists()
+    assert "health" in (root / "config/urls.py").read_text()
+
+
+def test_flask_auth_none_no_jwt_in_pyproject(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    root = get_generator(_make_config(Framework.FLASK, auth=AuthType.NONE)).generate()
+
+    assert "flask-jwt-extended" not in (root / "pyproject.toml").read_text()
+    assert "JWT_SECRET_KEY" not in (root / "src/demo_app/config.py").read_text()
+
+
+def test_django_auth_none_no_simplejwt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    root = get_generator(_make_config(Framework.DJANGO, auth=AuthType.NONE)).generate()
+
+    assert "djangorestframework-simplejwt" not in (root / "pyproject.toml").read_text()
+    assert "SIMPLE_JWT" not in (root / "config/settings/base.py").read_text()
+    assert "rest_framework.permissions.AllowAny" in (root / "config/settings/base.py").read_text()
+
+
+def test_flask_mongo_wiring(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    root = get_generator(_make_config(Framework.FLASK, database=Database.MONGODB)).generate()
+
+    assert (root / "src/demo_app/mongo.py").is_file()
+    assert (root / "src/demo_app/blueprints/items/__init__.py").is_file()
+    assert (root / "src/demo_app/blueprints/items/routes.py").is_file()
+    assert "flask-pymongo" not in (root / "pyproject.toml").read_text()
+    assert "pymongo" in (root / "pyproject.toml").read_text()
+    assert "mongomock" in (root / "pyproject.toml").read_text()
+
+
+def test_fastapi_mongo_wiring(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    root = get_generator(_make_config(Framework.FASTAPI, database=Database.MONGODB)).generate()
+
+    assert (root / "src/demo_app/modules/items/__init__.py").is_file()
+    assert (root / "src/demo_app/modules/items/router.py").is_file()
+    assert "mongomock-motor" in (root / "pyproject.toml").read_text()
 
 
 # ─── safety guards (C1/C2/M3 regression tests) ──────────────────────────────

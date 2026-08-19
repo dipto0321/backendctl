@@ -42,18 +42,20 @@ class DjangoGenerator(BaseGenerator):
         self._write("apps/users/__init__.py", "")
         self._write("apps/users/apps.py", t.users_apps(c))
         self._write("apps/users/models.py", t.users_model(c))
-        self._write("apps/users/serializers.py", t.users_serializers(c))
-        self._write("apps/users/views.py", t.users_views())
-        self._write("apps/users/urls.py", t.users_urls())
+        if c.auth.value != "none":
+            self._write("apps/users/serializers.py", t.users_serializers(c))
+            self._write("apps/users/views.py", t.users_views())
+            self._write("apps/users/urls.py", t.users_urls())
         self._write("apps/users/migrations/__init__.py", "")
 
         # apps/authentication/
-        self._write("apps/authentication/__init__.py", "")
-        self._write("apps/authentication/apps.py", t.auth_apps())
-        self._write("apps/authentication/serializers.py", t.auth_serializers(c))
-        self._write("apps/authentication/views.py", t.auth_views(c))
-        self._write("apps/authentication/urls.py", t.auth_urls())
-        self._write("apps/authentication/migrations/__init__.py", "")
+        if c.auth.value != "none":
+            self._write("apps/authentication/__init__.py", "")
+            self._write("apps/authentication/apps.py", t.auth_apps())
+            self._write("apps/authentication/serializers.py", t.auth_serializers(c))
+            self._write("apps/authentication/views.py", t.auth_views(c))
+            self._write("apps/authentication/urls.py", t.auth_urls())
+            self._write("apps/authentication/migrations/__init__.py", "")
 
         # core/
         self._write("core/__init__.py", "")
@@ -63,7 +65,9 @@ class DjangoGenerator(BaseGenerator):
         # Tests
         self._write("tests/__init__.py", "")
         self._write("tests/conftest.py", t.tests_conftest(c))
-        self._write("tests/test_auth.py", t.tests_auth())
+        self._write("tests/test_health.py", t.tests_health(c))
+        if c.auth.value != "none":
+            self._write("tests/test_auth.py", t.tests_auth())
 
         from backendctl.core.console import print_info
 

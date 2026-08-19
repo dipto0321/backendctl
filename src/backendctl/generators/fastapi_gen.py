@@ -60,6 +60,11 @@ class FastAPIGenerator(BaseGenerator):
             self._write(f"src/{s}/modules/users/__init__.py", "")
             self._write(f"src/{s}/modules/users/router.py", t.users_router(c))
 
+        if c.uses_mongo:
+            # items module
+            self._write(f"src/{s}/modules/items/__init__.py", "")
+            self._write(f"src/{s}/modules/items/router.py", t.items_router(c))
+
         # Alembic
         self._write("alembic.ini", t.alembic_ini(c))
         self._write("alembic/env.py", t.alembic_env(c))
@@ -69,8 +74,11 @@ class FastAPIGenerator(BaseGenerator):
         # Tests
         self._write("tests/__init__.py", "")
         self._write("tests/conftest.py", t.tests_conftest(c))
+        self._write("tests/test_health.py", t.tests_health(c))
         if c.auth.value != "none":
             self._write("tests/test_auth.py", t.tests_auth(c))
+        if c.uses_mongo:
+            self._write("tests/test_items.py", t.tests_items(c))
 
         from backendctl.core.console import print_info
 

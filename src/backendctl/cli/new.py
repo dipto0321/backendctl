@@ -339,6 +339,11 @@ def new_command(
         "--no-ai",
         help="Skip AI assistant setup.",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        help="Show full tracebacks on failure.",
+    ),
 ) -> None:
     print_banner()
 
@@ -432,6 +437,8 @@ def new_command(
         print_error(str(exc))
         raise typer.Exit(1)
     except Exception as exc:  # noqa: BLE001
+        if verbose:
+            raise
         print_error(f"Generation failed: {exc}")
         raise typer.Exit(1)
 
